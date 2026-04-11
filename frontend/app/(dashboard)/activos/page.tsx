@@ -15,10 +15,12 @@ interface Activo {
   valor_inicial?: number;
   valor_actual?: number;
   depreciacion_acumulada?: number;
+  valor_residual?: number;
+  vida_util?: number;
 }
 
 const estadoBadge: Record<string, { cls: string; label: string }> = {
-  operativo:      { cls: "badge badge-green",  label: "Operativo" },
+  operativo:      { cls: "badge badge-green shadow-sm shadow-green-500/10",  label: "Disponible" },
   mantenimiento:  { cls: "badge badge-yellow", label: "Mantenimiento" },
   fuera_servicio: { cls: "badge badge-red",    label: "Fuera de Servicio" },
   asignado:       { cls: "badge badge-blue",   label: "Asignado" },
@@ -40,6 +42,26 @@ export default function ActivosPage() {
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [idAEliminar, setIdAEliminar] = useState<number | null>(null);
+
+  // Historial de ocupación
+  const [historialModalOpen, setHistorialModalOpen] = useState(false);
+  const [activoSeleccionadoHist, setActivoSeleccionadoHist] = useState<Activo | null>(null);
+  const [historial, setHistorial] = useState<any[]>([]);
+  const [historialLoading, setHistorialLoading] = useState(false);
+
+  // Nueva Solicitud
+  const [obras, setObras] = useState<any[]>([]);
+  const [solicitudModalOpen, setSolicitudModalOpen] = useState(false);
+  const [solicitudForm, setSolicitudForm] = useState({
+    activo_id: "",
+    obra_id: "",
+    fecha_inicio: "",
+    fecha_fin: "",
+    comentario: ""
+  });
+  const [activoSchedule, setActivoSchedule] = useState<any[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [overlapError, setOverlapError] = useState<string | null>(null);
   
   // Formulario para activo
   const initialForm = {
@@ -51,7 +73,9 @@ export default function ActivosPage() {
     ubicacion: "",
     valor_inicial: 0,
     valor_actual: 0,
-    depreciacion_acumulada: 0
+    depreciacion_acumulada: 0,
+    valor_residual: 0,
+    vida_util: 5
   };
   const [formData, setFormData] = useState(initialForm);
 
@@ -69,8 +93,23 @@ export default function ActivosPage() {
     }
   };
 
+  const fetchObras = async () => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/obras`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setObras(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error fetching obras:", error);
+    }
+  };
+
   useEffect(() => {
-    if (token) fetchActivos();
+    if (token) {
+      fetchActivos();
+      fetchObras();
+    }
   }, [token]);
 
   const abrirModal = (activo?: Activo) => {
@@ -85,13 +124,119 @@ export default function ActivosPage() {
         ubicacion: activo.ubicacion || "",
         valor_inicial: activo.valor_inicial || 0,
         valor_actual: activo.valor_actual || 0,
-        depreciacion_acumulada: activo.depreciacion_acumulada || 0
+        depreciacion_acumulada: activo.depreciacion_acumulada || 0,
+        valor_residual: activo.valor_residual || 0,
+        vida_util: activo.vida_util || 5
       });
     } else {
       setEditandoId(null);
       setFormData(initialForm);
     }
     setModalAbierto(true);
+  };
+
+  const abrirHistorial = async (activo: Activo) => {
+    setActivoSeleccionadoHist(activo);
+    setHistorialModalOpen(true);
+    setHistorialLoading(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/activos/solicitudes/${activo.id}/schedule`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setHistorial(data);
+      }
+    } catch (error) {
+      console.error("Error al cargar historial:", error);
+    } finally {
+      setHistorialLoading(false);
+    }
+  };
+
+  const abrirSolicitud = (activo: Activo) => {
+    setSolicitudForm({
+      activo_id: activo.id.toString(),
+      obra_id: "",
+      fecha_inicio: "",
+      fecha_fin: "",
+      comentario: ""
+    });
+    setOverlapError(null);
+    setSolicitudModalOpen(true);
+  };
+
+  // Cronograma cuando cambia activo_id en el form
+  useEffect(() => {
+    const fetchSchedule = async () => {
+      if (!solicitudForm.activo_id || !token) {
+        setActivoSchedule([]);
+        return;
+      }
+      setScheduleLoading(true);
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/activos/solicitudes/${solicitudForm.activo_id}/schedule`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setActivoSchedule(data);
+        }
+      } catch (error) {
+        console.error("Error fetching schedule:", error);
+      } finally {
+        setScheduleLoading(false);
+      }
+    };
+    fetchSchedule();
+  }, [solicitudForm.activo_id, token]);
+
+  // Validar solapamiento
+  useEffect(() => {
+    if (!solicitudForm.fecha_inicio || !solicitudForm.fecha_fin || activoSchedule.length === 0) {
+      setOverlapError(null);
+      return;
+    }
+
+    const start = new Date(solicitudForm.fecha_inicio);
+    const end = new Date(solicitudForm.fecha_fin);
+
+    const hasOverlap = activoSchedule.some(entry => {
+      const entryStart = new Date(entry.fecha_inicio);
+      const entryEnd = new Date(entry.fecha_fin);
+      return (
+        (start <= entryStart && end >= entryStart) ||
+        (start <= entryEnd && end >= entryEnd) ||
+        (entryStart <= start && entryEnd >= start)
+      );
+    });
+
+    setOverlapError(hasOverlap ? "Las fechas seleccionadas se cruzan con una reserva existente." : null);
+  }, [solicitudForm.fecha_inicio, solicitudForm.fecha_fin, activoSchedule]);
+
+  const handleSolicitudSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/activos/solicitudes`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(solicitudForm),
+      });
+      if (res.ok) {
+        setSolicitudModalOpen(false);
+        setSolicitudForm({ activo_id: "", obra_id: "", fecha_inicio: "", fecha_fin: "", comentario: "" });
+        // Mostrar mensaje de éxito o redirigir opcionalmente
+        alert("Solicitud enviada con éxito.");
+      } else {
+        const errorData = await res.json();
+        alert(errorData.mensaje || "Error al crear solicitud.");
+      }
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -190,7 +335,27 @@ export default function ActivosPage() {
                       </span>
                     </td>
                     <td>
-                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                        <button 
+                          className="btn-secondary" 
+                          style={{ padding: "0.25rem 0.625rem", fontSize: "0.75rem", border: "1px solid var(--accent)", color: "var(--accent)" }}
+                          onClick={() => abrirHistorial(activo)}
+                          title="Ver Cronograma de Ocupación"
+                        >
+                          Historial
+                        </button>
+
+                        {/* Botón Solicitar para Técnicos y Supervisores */}
+                        {((user?.rol || "").toLowerCase().includes('técnico') || (user?.rol || "").toLowerCase().includes('supervisor')) && activo.estado !== 'fuera_servicio' && activo.estado !== 'mantenimiento' && (
+                          <button 
+                            className="btn-primary" 
+                            style={{ padding: "0.25rem 0.625rem", fontSize: "0.75rem" }}
+                            onClick={() => abrirSolicitud(activo)}
+                          >
+                            Solicitar
+                          </button>
+                        )}
+
                         {(puedeEditarFisico || puedeEditarFinanciero) ? (
                           <>
                             <button 
@@ -212,9 +377,7 @@ export default function ActivosPage() {
                               </button>
                             )}
                           </>
-                        ) : (
-                          <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>Solo lectura</span>
-                        )}
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -225,22 +388,17 @@ export default function ActivosPage() {
         </div>
       </main>
 
-      {/* Modal Crear/Editar Activo */}
       {modalAbierto && (
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 100,
-          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)",
-          display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem",
-        }} onClick={() => setModalAbierto(false)}>
-          <form className="card" style={{ width: "100%", maxWidth: "600px", padding: "2rem", boxShadow: "0 20px 50px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()} onSubmit={handleSubmit}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
-              <h2 style={{ fontSize: "1.25rem", fontWeight: "800", color: "var(--text-primary)" }}>
+        <div className="modal-overlay" onClick={() => setModalAbierto(false)}>
+          <form className="modal-content max-w-2xl" onClick={e => e.stopPropagation()} onSubmit={handleSubmit}>
+            <div className="modal-header">
+              <h2 className="text-xl font-extrabold text-primary">
                 {editandoId ? "Editar Activo Fijo" : "Nuevo Activo Fijo"}
               </h2>
               <button 
                 type="button" 
                 onClick={() => setModalAbierto(false)}
-                style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer", fontSize: "1.5rem" }}
+                className="modal-close"
               >
                 &times;
               </button>
@@ -362,6 +520,28 @@ export default function ActivosPage() {
                 />
               </div>
 
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Valor Residual</label>
+                <input 
+                  type="number"
+                  disabled={!puedeEditarFinanciero}
+                  value={formData.valor_residual}
+                  onChange={e => setFormData({...formData, valor_residual: Number(e.target.value)})}
+                  style={{ width: "100%" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Vida Útil (Años)</label>
+                <input 
+                  type="number"
+                  disabled={!puedeEditarFinanciero}
+                  value={formData.vida_util}
+                  onChange={e => setFormData({...formData, vida_util: Number(e.target.value)})}
+                  style={{ width: "100%" }}
+                />
+              </div>
+
               <div style={{ display: "flex", gap: "1rem", marginTop: "1.5rem", gridColumn: "span 2" }}>
                 <button type="button" className="btn-secondary" style={{ flex: 1, padding: "0.85rem" }} onClick={() => setModalAbierto(false)}>Cancelar</button>
                 <button type="submit" className="btn-primary" style={{ flex: 1, padding: "0.85rem" }}>
@@ -370,6 +550,195 @@ export default function ActivosPage() {
               </div>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal Nueva Solicitud from Activos */}
+      {solicitudModalOpen && (
+        <div className="modal-overlay" onClick={() => { setSolicitudModalOpen(false); setOverlapError(null); }}>
+          <div className="modal-content max-w-xl" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2 className="text-xl font-bold text-primary">Solicitud de Equipo</h2>
+                <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
+                  Equipo: <span style={{ color: "var(--accent)", fontWeight: "600" }}>{activos.find(a => a.id.toString() === solicitudForm.activo_id)?.nombre}</span>
+                </p>
+              </div>
+              <button className="modal-close" onClick={() => { setSolicitudModalOpen(false); setOverlapError(null); }}>
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleSolicitudSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.5rem", marginTop: "1.5rem" }}>
+              {/* UBICACIÓN DE DESTINO */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <label style={{ fontSize: "0.85rem", fontWeight: "700", color: "var(--text-secondary)" }}>REGISTRAR EN OBRA / PROYECTO</label>
+                <select required value={solicitudForm.obra_id} onChange={e => setSolicitudForm({...solicitudForm, obra_id: e.target.value})}>
+                  <option value="">Seleccionar destino...</option>
+                  {obras.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+                </select>
+              </div>
+
+              {/* DISPONIBILIDAD */}
+              <div className="card" style={{ padding: "1.25rem", background: "var(--bg-primary)", borderColor: "transparent" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+                  <div style={{ width: "1.5rem", height: "1.5rem", borderRadius: "50%", background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: "0.7rem", fontWeight: "700" }}>R</div>
+                  <h3 style={{ fontSize: "0.75rem", fontWeight: "800", color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>Disponibilidad del Equipo</h3>
+                </div>
+                
+                {scheduleLoading ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.5rem 0", fontSize: "0.75rem", color: "var(--text-secondary)", fontStyle: "italic" }}>
+                    <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+                    Consultando cronograma...
+                  </div>
+                ) : activoSchedule.length === 0 ? (
+                  <div className="status-available" style={{ padding: "0.5rem 0" }}>
+                    Disponible inmediato
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "120px", overflowY: "auto", paddingRight: "0.25rem" }} className="custom-scrollbar">
+                    {activoSchedule.map(entry => (
+                      <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-secondary)", padding: "0.65rem 0.85rem", borderRadius: "0.65rem", border: "1px solid var(--border)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#3b82f6" }}></div>
+                          <span style={{ fontSize: "0.7rem", fontWeight: "600", color: "var(--text-secondary)" }}>
+                            {new Date(entry.fecha_inicio).toLocaleDateString()} — {new Date(entry.fecha_fin).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: "0.6rem", fontWeight: "900", color: "#3b82f6", background: "rgba(59,130,246,0.1)", padding: "0.15rem 0.45rem", borderRadius: "0.25rem" }}>OCUPADO</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* PERIODO DE USO */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  <label style={{ fontSize: "0.7rem", fontWeight: "800", color: "var(--text-secondary)", textTransform: "uppercase" }}>Fecha Inicio</label>
+                  <input type="date" required value={solicitudForm.fecha_inicio} onChange={e => setSolicitudForm({...solicitudForm, fecha_inicio: e.target.value})} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  <label style={{ fontSize: "0.7rem", fontWeight: "800", color: "var(--text-secondary)", textTransform: "uppercase" }}>Fecha Fin</label>
+                  <input type="date" required value={solicitudForm.fecha_fin} onChange={e => setSolicitudForm({...solicitudForm, fecha_fin: e.target.value})} />
+                </div>
+              </div>
+
+              {overlapError && (
+                <div style={{ padding: "1rem", background: "rgba(239, 68, 68, 0.05)", border: "1px solid rgba(239, 68, 68, 0.2)", borderRadius: "0.75rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  <svg style={{ color: "#ef4444" }} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                  <span style={{ fontSize: "0.7rem", fontWeight: "700", color: "#f87171" }}>{overlapError}</span>
+                </div>
+              )}
+
+              {/* COMENTARIO */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <label style={{ fontSize: "0.85rem", fontWeight: "700", color: "var(--text-secondary)" }}>COMENTARIOS ADICIONALES</label>
+                <textarea 
+                  style={{ minHeight: "100px", padding: "1rem" }} 
+                  placeholder="Detalles técnicos o requisitos especiales..." 
+                  value={solicitudForm.comentario} 
+                  onChange={e => setSolicitudForm({...solicitudForm, comentario: e.target.value})} 
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>
+                <button type="button" className="btn-secondary" style={{ flex: 1, height: "3.25rem" }} onClick={() => { setSolicitudModalOpen(false); setOverlapError(null); }}>Cancelar</button>
+                <button 
+                  type="submit" 
+                  className="btn-primary" 
+                  style={{ flex: 1.5, height: "3.25rem" }} 
+                  disabled={!!overlapError || !solicitudForm.obra_id || scheduleLoading}
+                >
+                  {overlapError ? 'Conflicto de Fechas' : 'Confirmar Solicitud'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+
+      {/* Modal Historial de Ocupación */}
+      {historialModalOpen && (
+        <div className="modal-overlay" onClick={() => setHistorialModalOpen(false)}>
+          <div className="modal-content max-w-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2 className="text-xl font-bold text-primary">Cronograma de Uso</h2>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.25rem" }}>
+                  <span className="w-2 h-2 rounded-full bg-accent"></span>
+                  <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", fontWeight: "500" }}>{activoSeleccionadoHist?.nombre}</p>
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setHistorialModalOpen(false)}>
+                &times;
+              </button>
+            </div>
+
+            <div style={{ marginTop: "1.5rem" }}>
+              {historialLoading ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "3rem 0", gap: "1rem" }}>
+                  <div className="w-8 h-8 border-3 border-accent border-t-transparent rounded-full animate-spin"></div>
+                  <span style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>Sincronizando reservas...</span>
+                </div>
+              ) : historial.length === 0 ? (
+                <div style={{ padding: "3rem 0", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <div style={{ width: "4rem", height: "4rem", background: "var(--bg-primary)", borderRadius: "1rem", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "1rem" }}>
+                    <svg style={{ color: "var(--text-secondary)" }} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
+                  </div>
+                  <h4 style={{ fontWeight: "700", marginBottom: "0.25rem" }}>Sin reservas activas</h4>
+                  <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginBottom: "1.5rem", maxWidth: "200px" }}>Este equipo está disponible para ser asignado inmediatamente.</p>
+                  <div className="status-available">DISPONIBLE AHORA</div>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                  <div className="flex-between" style={{ padding: "0 0.25rem" }}>
+                    <h3 style={{ fontSize: "0.65rem", fontWeight: "900", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "1.5px" }}>Próximas Ocupaciones</h3>
+                    <div style={{ fontSize: "0.65rem", fontWeight: "700", color: "var(--accent)" }}>{historial.length} RESERVAS</div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", maxHeight: "400px", overflowY: "auto", paddingRight: "0.5rem" }} className="custom-scrollbar">
+                    {historial.map((entry: any) => (
+                      <div key={entry.id} className="card" style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                        <div className="flex-between">
+                          <div style={{ background: "var(--bg-primary)", padding: "0.5rem", borderRadius: "0.5rem", color: "var(--text-secondary)" }}>
+                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+                          </div>
+                          <span className={
+                            entry.estado === 'Aprobado' ? 'badge badge-green' : 
+                            entry.estado === 'Entregado' ? 'badge badge-blue' :
+                            'badge badge-yellow'
+                          } style={{ fontSize: "0.65rem" }}>
+                            {entry.estado}
+                          </span>
+                        </div>
+                        <div>
+                          <p style={{ fontSize: "0.875rem", fontWeight: "700" }}>
+                            {new Date(entry.fecha_inicio).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} — {new Date(entry.fecha_fin).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                          </p>
+                          <p style={{ fontSize: "0.65rem", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.25rem" }}>
+                             <span style={{ width: "4px", height: "4px", borderRadius: "50%", background: "var(--border)" }}></span>
+                             Ticket de Solicitud #{entry.id}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: "2rem" }}>
+              <button 
+                type="button"
+                className="btn-primary w-full" 
+                style={{ height: "3rem", textTransform: "uppercase", letterSpacing: "1px", fontSize: "0.75rem" }}
+                onClick={() => setHistorialModalOpen(false)}
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

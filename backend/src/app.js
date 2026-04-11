@@ -24,7 +24,7 @@ app.use("/api/asignaciones", require("./routes/asignaciones.routes"));
 app.use("/api/activos/solicitudes", require("./routes/solicitudes_activos.routes"));
 app.use("/api/almacenes", require("./routes/almacenes.routes"));
 app.use("/api/movimientos", require("./routes/movimientos.routes"));
-app.use("/api/compras", require("./routes/compras.routes"));
+app.use("/api/depreciacion", require("./routes/depreciacion.routes"));
 
 // Ruta de prueba
 app.get("/", (req, res) => {

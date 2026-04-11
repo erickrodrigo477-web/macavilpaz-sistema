@@ -22,17 +22,19 @@ const createActivo = async (req, res) => {
 
   const { 
     nombre, descripcion, codigo_inventario, estado, fecha_compra,
-    ubicacion, valor_inicial, valor_actual, depreciacion_acumulada 
+    ubicacion, valor_inicial, valor_actual, depreciacion_acumulada,
+    valor_residual, vida_util
   } = req.body;
 
   try {
     const result = await pool.query(
       `INSERT INTO activos_fijos 
-       (nombre, descripcion, codigo_inventario, estado, fecha_compra, ubicacion, valor_inicial, valor_actual, depreciacion_acumulada) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+       (nombre, descripcion, codigo_inventario, estado, fecha_compra, ubicacion, valor_inicial, valor_actual, depreciacion_acumulada, valor_residual, vida_util) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
       [
         nombre, descripcion, codigo_inventario, estado, fecha_compra, 
-        ubicacion, valor_inicial || 0, valor_actual || 0, depreciacion_acumulada || 0
+        ubicacion, valor_inicial || 0, valor_actual || 0, depreciacion_acumulada || 0,
+        valor_residual || 0, vida_util || 5
       ]
     );
     res.status(201).json(result.rows[0]);
@@ -58,7 +60,8 @@ const updateActivo = async (req, res) => {
     // 2. Definir qué campos puede actualizar cada rol
     const { 
       nombre, descripcion, codigo_inventario, estado, fecha_compra,
-      ubicacion, valor_inicial, valor_actual, depreciacion_acumulada 
+      ubicacion, valor_inicial, valor_actual, depreciacion_acumulada,
+      valor_residual, vida_util
     } = req.body;
 
     let query = 'UPDATE activos_fijos SET ';
@@ -70,7 +73,8 @@ const updateActivo = async (req, res) => {
       // Admin edita todo
       setClauses = [
         'nombre = $1', 'descripcion = $2', 'codigo_inventario = $3', 'estado = $4', 
-        'fecha_compra = $5', 'ubicacion = $6', 'valor_inicial = $7', 'valor_actual = $8', 'depreciacion_acumulada = $9'
+        'fecha_compra = $5', 'ubicacion = $6', 'valor_inicial = $7', 'valor_actual = $8', 
+        'depreciacion_acumulada = $9', 'valor_residual = $10', 'vida_util = $11'
       ];
       params = [
         nombre || current.nombre, 
@@ -81,7 +85,9 @@ const updateActivo = async (req, res) => {
         ubicacion || current.ubicacion, 
         valor_inicial !== undefined ? valor_inicial : current.valor_inicial, 
         valor_actual !== undefined ? valor_actual : current.valor_actual, 
-        depreciacion_acumulada !== undefined ? depreciacion_acumulada : current.depreciacion_acumulada
+        depreciacion_acumulada !== undefined ? depreciacion_acumulada : current.depreciacion_acumulada,
+        valor_residual !== undefined ? valor_residual : current.valor_residual,
+        vida_util !== undefined ? vida_util : current.vida_util
       ];
     } 
     else if (rol === 'Almacén' || rol === 'Almacen') {
@@ -98,11 +104,13 @@ const updateActivo = async (req, res) => {
     } 
     else if (rol === 'Contabilidad') {
       // Contabilidad edita solo datos financieros
-      setClauses = ['valor_inicial = $1', 'valor_actual = $2', 'depreciacion_acumulada = $3'];
+      setClauses = ['valor_inicial = $1', 'valor_actual = $2', 'depreciacion_acumulada = $3', 'valor_residual = $4', 'vida_util = $5'];
       params = [
         valor_inicial !== undefined ? valor_inicial : current.valor_inicial, 
         valor_actual !== undefined ? valor_actual : current.valor_actual, 
-        depreciacion_acumulada !== undefined ? depreciacion_acumulada : current.depreciacion_acumulada
+        depreciacion_acumulada !== undefined ? depreciacion_acumulada : current.depreciacion_acumulada,
+        valor_residual !== undefined ? valor_residual : current.valor_residual,
+        vida_util !== undefined ? vida_util : current.vida_util
       ];
     } 
     else {

@@ -20,6 +20,7 @@ interface Solicitud {
 
 interface Activo { id: number; nombre: string; estado: string; }
 interface Obra { id: number; nombre: string; }
+interface ScheduleEntry { id: number; fecha_inicio: string; fecha_fin: string; estado: string; }
 
 export default function SolicitudesActivosPage() {
   const { token, user } = useAuth();
@@ -30,6 +31,9 @@ export default function SolicitudesActivosPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [entregaActivo, setEntregaActivo] = useState<number | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [activoSchedule, setActivoSchedule] = useState<ScheduleEntry[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [overlapError, setOverlapError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     activo_id: "",
@@ -57,8 +61,9 @@ export default function SolicitudesActivosPage() {
       const [solData, actData, obrData] = await Promise.all([solRes.json(), actRes.json(), obrRes.json()]);
       
       setSolicitudes(Array.isArray(solData) ? solData : []);
-      // Aceptamos tanto 'disponible' como 'operativo'
-      setActivos(Array.isArray(actData) ? actData.filter(a => a.estado === 'disponible' || a.estado === 'operativo') : []);
+      // Mostramos equipos operativos o asignados (reservables para el futuro)
+      const reservables = ['operativo', 'disponible', 'asignado'];
+      setActivos(Array.isArray(actData) ? actData.filter(a => reservables.includes((a.estado || "").toLowerCase())) : []);
       setObras(Array.isArray(obrData) ? obrData : []);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -70,6 +75,54 @@ export default function SolicitudesActivosPage() {
   useEffect(() => {
     if (token) fetchData();
   }, [token]);
+
+  // Fetch schedule when internal asset selection changes
+  useEffect(() => {
+    const fetchSchedule = async () => {
+      if (!formData.activo_id || !token) {
+        setActivoSchedule([]);
+        return;
+      }
+      setScheduleLoading(true);
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/activos/solicitudes/${formData.activo_id}/schedule`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setActivoSchedule(data);
+        }
+      } catch (error) {
+        console.error("Error fetching schedule:", error);
+      } finally {
+        setScheduleLoading(false);
+      }
+    };
+    fetchSchedule();
+  }, [formData.activo_id, token]);
+
+  // Validate overlap whenever dates change
+  useEffect(() => {
+    if (!formData.fecha_inicio || !formData.fecha_fin || activoSchedule.length === 0) {
+      setOverlapError(null);
+      return;
+    }
+
+    const start = new Date(formData.fecha_inicio);
+    const end = new Date(formData.fecha_fin);
+
+    const hasOverlap = activoSchedule.some(entry => {
+      const entryStart = new Date(entry.fecha_inicio);
+      const entryEnd = new Date(entry.fecha_fin);
+      return (
+        (start <= entryStart && end >= entryStart) ||
+        (start <= entryEnd && end >= entryEnd) ||
+        (entryStart <= start && entryEnd >= start)
+      );
+    });
+
+    setOverlapError(hasOverlap ? "Las fechas seleccionadas se cruzan con una reserva existente." : null);
+  }, [formData.fecha_inicio, formData.fecha_fin, activoSchedule]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -230,41 +283,123 @@ export default function SolicitudesActivosPage() {
       </div>
 
       {modalOpen && (
-        <div className="modal-overlay" onClick={() => setModalOpen(false)}>
-          <div className="modal-content max-w-lg" onClick={e => e.stopPropagation()}>
-            <h2 className="text-xl font-bold mb-4">Solicitar Equipo</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="modal-overlay" onClick={() => { setModalOpen(false); setOverlapError(null); }}>
+          <div className="modal-content max-w-xl border-t-4 border-accent" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
               <div>
-                <label className="label">Activo Disponible</label>
-                <select required value={formData.activo_id} onChange={e => setFormData({...formData, activo_id: e.target.value})}>
-                  <option value="">Seleccione equipo...</option>
-                  {activos.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.estado})</option>)}
-                </select>
+                <h2 className="text-xl font-black text-primary">Solicitar Equipo</h2>
+                <p className="text-xs text-secondary mt-1 italic">Sigue los pasos para reservar un activo.</p>
               </div>
-              <div>
-                <label className="label">Obra</label>
-                <select required value={formData.obra_id} onChange={e => setFormData({...formData, obra_id: e.target.value})}>
-                  <option value="">Seleccione obra...</option>
-                  {obras.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Fecha Inicio</label>
-                  <input type="date" required value={formData.fecha_inicio} onChange={e => setFormData({...formData, fecha_inicio: e.target.value})} />
+              <button className="modal-close" onClick={() => { setModalOpen(false); setOverlapError(null); }}>&times;</button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* PASO 1: SELECCIÓN */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase tracking-widest">
+                  <span className="w-5 h-5 rounded-full bg-accent text-white flex-center text-[10px]">1</span>
+                  Selección de Equipo
                 </div>
-                <div>
-                  <label className="label">Fecha Fin</label>
-                  <input type="date" required value={formData.fecha_fin} onChange={e => setFormData({...formData, fecha_fin: e.target.value})} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="label text-[10px]">Activo Fijo</label>
+                    <select required value={formData.activo_id} onChange={e => setFormData({...formData, activo_id: e.target.value})} className="bg-gray-800">
+                      <option value="">Seleccionar...</option>
+                      {activos.map(a => <option key={a.id} value={a.id}>{a.nombre} [{a.estado}]</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label text-[10px]">Obra de Destino</label>
+                    <select required value={formData.obra_id} onChange={e => setFormData({...formData, obra_id: e.target.value})} className="bg-gray-800">
+                      <option value="">Seleccionar...</option>
+                      {obras.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+                    </select>
+                  </div>
                 </div>
               </div>
-              <div>
-                <label className="label">Motivo / Comentario</label>
-                <textarea value={formData.comentario} onChange={e => setFormData({...formData, comentario: e.target.value})} />
+
+              {/* PASO 2: CRONOGRAMA */}
+              {formData.activo_id && (
+                <div className="space-y-3 p-4 bg-gray-900/50 rounded-xl border border-white/5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-blue-400 font-bold text-xs uppercase tracking-widest">
+                      <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex-center text-[10px]">2</span>
+                      Disponibilidad Histórica
+                    </div>
+                    <span className="text-[10px] text-gray-500 bg-gray-800 px-2 py-0.5 rounded">Verifica las fechas</span>
+                  </div>
+                  
+                  {scheduleLoading ? (
+                    <div className="flex-center py-4 gap-2 text-xs text-gray-500">
+                      <div className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+                      Consultando calendario...
+                    </div>
+                  ) : activoSchedule.length === 0 ? (
+                    <div className="text-[11px] text-green-400/80 bg-green-500/5 p-3 rounded-lg border border-green-500/20 flex items-center gap-2">
+                       ✅ Este equipo no tiene reservas próximas. ¡Está totalmente libre!
+                    </div>
+                  ) : (
+                    <div className="max-h-32 overflow-y-auto pr-2 space-y-1.5 custom-scrollbar">
+                      {activoSchedule.map(entry => (
+                         <div key={entry.id} className="text-[10px] flex justify-between items-center bg-gray-800/80 p-2 rounded-lg border border-white/5">
+                            <div className="flex gap-2 items-center">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+                              <span className="text-gray-300 font-medium">
+                                {new Date(entry.fecha_inicio).toLocaleDateString()} al {new Date(entry.fecha_fin).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${
+                              entry.estado === 'Aprobado' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 
+                              entry.estado === 'Entregado' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+                              'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
+                            }`}>
+                              {entry.estado}
+                            </span>
+                         </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* PASO 3: FECHAS */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-purple-400 font-bold text-xs uppercase tracking-widest">
+                  <span className="w-5 h-5 rounded-full bg-purple-500 text-white flex-center text-[10px]">3</span>
+                  Periodo de Solicitud
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="label text-[10px]">Desde</label>
+                    <input type="date" required value={formData.fecha_inicio} onChange={e => setFormData({...formData, fecha_inicio: e.target.value})} className="bg-gray-800 text-xs" />
+                  </div>
+                  <div>
+                    <label className="label text-[10px]">Hasta</label>
+                    <input type="date" required value={formData.fecha_fin} onChange={e => setFormData({...formData, fecha_fin: e.target.value})} className="bg-gray-800 text-xs" />
+                  </div>
+                </div>
+                {overlapError && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[10px] font-bold flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                    {overlapError}
+                  </div>
+                )}
               </div>
-              <div className="flex gap-4 mt-6">
-                <button type="button" className="btn-secondary flex-1" onClick={() => setModalOpen(false)}>Cancelar</button>
-                <button type="submit" className="btn-primary flex-1">Enviar Solicitud</button>
+
+              {/* PASO 4: EXTRA */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-gray-400 font-bold text-xs uppercase tracking-widest">
+                  <span className="w-5 h-5 rounded-full bg-gray-600 text-white flex-center text-[10px]">4</span>
+                  Detalles Finales
+                </div>
+                <textarea className="bg-gray-800 border-gray-700 text-xs min-h-[80px]" placeholder="¿Para qué se necesita el equipo?..." value={formData.comentario} onChange={e => setFormData({...formData, comentario: e.target.value})} />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button type="button" className="btn-secondary flex-1 py-3" onClick={() => { setModalOpen(false); setOverlapError(null); }}>Cancelar</button>
+                <button type="submit" className="btn-primary flex-1 py-3 text-sm" disabled={!!overlapError || !formData.activo_id || scheduleLoading}>
+                  {overlapError ? 'Bloqueado por Cruce' : 'Enviar Solicitud'}
+                </button>
               </div>
             </form>
           </div>

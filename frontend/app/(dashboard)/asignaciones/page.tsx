@@ -39,6 +39,7 @@ export default function AsignacionesPage() {
   
   const [asignaciones, setAsignaciones] = useState<Asignacion[]>([]);
   const [solicitudesAprobadas, setSolicitudesAprobadas] = useState<Solicitud[]>([]);
+  const [solicitudesPendientes, setSolicitudesPendientes] = useState<Solicitud[]>([]);
   const [activos, setActivos] = useState<Item[]>([]);
   const [obras, setObras] = useState<Item[]>([]);
   const [usuarios, setUsuarios] = useState<Item[]>([]);
@@ -76,7 +77,10 @@ export default function AsignacionesPage() {
       setActivos(Array.isArray(actData) ? actData : []);
       setObras(Array.isArray(obrData) ? obrData : []);
       setUsuarios(Array.isArray(usrData) ? usrData : []);
-      setSolicitudesAprobadas(Array.isArray(solData) ? solData.filter((s:any) => s.estado === 'aprobado') : []);
+      
+      const solicitudes = Array.isArray(solData) ? solData : [];
+      setSolicitudesAprobadas(solicitudes.filter((s:any) => (s.estado || "").toLowerCase() === 'aprobado'));
+      setSolicitudesPendientes(solicitudes.filter((s:any) => (s.estado || "").toLowerCase() === 'pendiente'));
       
       setLoading(false);
     } catch (error) {
@@ -156,27 +160,82 @@ export default function AsignacionesPage() {
     }
   };
 
+  const handleUpdateSolicitud = async (id: number, nuevoEstado: string) => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/activos/solicitudes/${id}/estado`, {
+        method: "PATCH",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ estado: nuevoEstado }),
+      });
+      if (res.ok) fetchData();
+    } catch (error) {
+      console.error("Error al actualizar solicitud:", error);
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "auto" }}>
 
       <main style={{ flex: 1, padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
         
+        {/* Sección de Solicitudes Pendientes para Supervisor/Admin */}
+        {((user?.rol || "").toLowerCase().includes("supervisor") || (user?.rol || "").toLowerCase().includes("administrador")) && (
+          <div className="card" style={{ borderLeft: "4px solid #f59e0b", padding: "1.25rem" }}>
+            <h3 style={{ fontSize: "1rem", fontWeight: "700", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#f59e0b" }}></span>
+              Solicitudes de Equipo Pendientes de Aprobación
+            </h3>
+            {solicitudesPendientes.length === 0 ? (
+              <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>No hay solicitudes esperando aprobación para tus obras.</p>
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
+                {solicitudesPendientes.map(s => (
+                  <div key={s.id} style={{ 
+                    background: "var(--bg-primary)", padding: "1rem", borderRadius: "1rem", 
+                    fontSize: "0.85rem", flex: "1 1 350px", border: "1px solid var(--border)",
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: "700", color: "var(--text-primary)", fontSize: "0.9rem" }}>{s.activo_nombre}</div>
+                      <div style={{ color: "var(--text-secondary)", fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                        <strong>Solicitante:</strong> {s.solicitante_nombre} <br/>
+                        <strong>Obra:</strong> {s.obra_nombre}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <button className="btn-primary btn-small" onClick={() => handleUpdateSolicitud(s.id, 'aprobado')}>Aprobar</button>
+                      <button className="btn-secondary btn-small" style={{ color: "#ef4444", borderColor: "#ef444430" }} onClick={() => handleUpdateSolicitud(s.id, 'rechazado')}>Rechazar</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Sección de Solicitudes Aprobadas para Almacén */}
         {esAdminOAlmacen && (
           <div className="card" style={{ borderLeft: "4px solid var(--accent)", padding: "1.25rem" }}>
-            <h3 style={{ fontSize: "1rem", fontWeight: "700", marginBottom: "1rem" }}>Solicitudes Aprobadas (Pendientes de Entrega)</h3>
+            <h3 style={{ fontSize: "1rem", fontWeight: "700", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--accent)" }}></span>
+              Solicitudes Aprobadas (Pendientes de Entrega)
+            </h3>
             {solicitudesAprobadas.length === 0 ? (
               <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>No hay solicitudes aprobadas esperando asignación.</p>
             ) : (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
                 {solicitudesAprobadas.map(s => (
                   <div key={s.id} style={{ 
-                    background: "var(--bg-primary)", padding: "0.75rem", borderRadius: "0.5rem", 
+                    background: "var(--bg-primary)", padding: "1rem", borderRadius: "1rem", 
                     fontSize: "0.85rem", flex: "1 1 300px", border: "1px solid var(--border)",
                     display: "flex", justifyContent: "space-between", alignItems: "center"
                   }}>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: "600" }}>{s.activo_nombre}</div>
+                      <div style={{ fontWeight: "700" }}>{s.activo_nombre}</div>
                       <div style={{ color: "var(--text-secondary)", fontSize: "0.75rem" }}>
                         Para: {s.solicitante_nombre} en {s.obra_nombre}
                       </div>

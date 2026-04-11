@@ -7,6 +7,7 @@ const upload = require('../middlewares/upload.middleware');
 router.use(authMiddleware);
 
 router.get('/', solicitudesController.getSolicitudes);
+router.get('/:activo_id/schedule', solicitudesController.getActivoSchedule);
 router.post('/', solicitudesController.createSolicitud);
 router.patch('/:id/estado', upload.single('pdf_entrega'), solicitudesController.updateEstado);
 

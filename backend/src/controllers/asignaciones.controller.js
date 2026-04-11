@@ -57,7 +57,7 @@ const createAsignacion = async (req, res) => {
 const updateEstado = async (req, res) => {
   const { id } = req.params;
   const { estado, fecha_devolucion, nuevo_estado_activo } = req.body;
-  // nuevo_estado_activo: disponible, mantenimiento, dañado
+  // nuevo_estado_activo: operativo, mantenimiento, dañado
 
   const client = await pool.connect();
   try {

@@ -36,24 +36,28 @@ const Icons = {
   ChevronRight: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
   ),
-  Compras: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-  ),
   Almacenes: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21V7L12 3L21 7V21H16V14H8V21H3Z"/></svg>
+  ),
+  Mantenimiento: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73z"/><circle cx="12" cy="12" r="4"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+  ),
+  Depreciacion: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
   ),
 };
 
 const navItems = [
   { href: "/dashboard",    label: "Dashboard",    icon: Icons.Dashboard, roles: ["Administrador", "Almacén", "Supervisor de Obra", "Técnico", "Contabilidad"] },
-  { href: "/activos",      label: "Activos Fijos", icon: Icons.Activos, roles: ["Administrador", "Contabilidad"] },
-  { href: "/asignaciones", label: "Asignaciones",  icon: Icons.Asignaciones, roles: ["Administrador"] },
-  { href: "/obras",        label: "Obras",         icon: Icons.Obras, roles: ["Administrador", "Supervisor de Obra", "Contabilidad"] },
+  { href: "/activos",      label: "Activos Fijos", icon: Icons.Activos, roles: ["Administrador", "Contabilidad", "Almacén", "Técnico", "Supervisor de Obra"] },
+  { href: "/depreciacion", label: "Depreciación",  icon: Icons.Depreciacion, roles: ["Administrador", "Contabilidad"] },
+  { href: "/mantenimiento", label: "Mantenimiento Predictivo", icon: Icons.Mantenimiento, roles: ["Administrador", "Contabilidad", "Técnico"] },
+  { href: "/asignaciones", label: "Asignaciones",  icon: Icons.Asignaciones, roles: ["Administrador", "Almacén", "Supervisor de Obra"] },
+  { href: "/obras",        label: "Obras",         icon: Icons.Obras, roles: ["Administrador", "Supervisor de Obra", "Contabilidad", "Técnico"] },
   { href: "/almacenes",    label: "Almacenes",     icon: Icons.Almacenes, roles: ["Administrador", "Almacén"] },
   { href: "/suministros",  label: "Suministros",   icon: Icons.Suministros, roles: ["Administrador", "Almacén"] },
   { href: "/solicitudes",  label: "Solicitudes",   icon: Icons.Solicitudes, roles: ["Administrador", "Almacén", "Supervisor de Obra", "Técnico"] },
   { href: "/movimientos",  label: "Movimientos",   icon: Icons.Movimientos, roles: ["Administrador", "Almacén"] },
-  { href: "/compras",     label: "Compras",       icon: Icons.Compras, roles: ["Administrador", "Contabilidad"] },
   { href: "/usuarios",     label: "Usuarios",      icon: Icons.Usuarios, roles: ["Administrador"] },
 ];
 
