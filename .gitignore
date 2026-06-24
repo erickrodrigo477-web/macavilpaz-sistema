@@ -1,0 +1,23 @@
+# Ruteo ignorado global para Node.js
+**/node_modules/
+**/.next/
+**/dist/
+**/build/
+**/.env
+**/.env.*
+**/.env.local
+**/coverage/
+
+# Base de datos local
+**/pgdata/
+*.sqlite
+*.db
+
+# Logs
+**/logs/
+*.log
+npm-debug.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
