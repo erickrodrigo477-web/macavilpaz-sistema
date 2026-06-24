@@ -32,20 +32,21 @@ export default function LandingPage() {
       {/* Navbar Superior */}
       <header className="glass-nav flex-between" style={{ 
         top: "1.5rem", left: "50%", transform: "translateX(-50%)", width: "95%", maxWidth: "1400px",
-        height: "70px", borderRadius: "99px", boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
-        padding: "0 2.5rem"
+        height: "auto", minHeight: "70px", borderRadius: "99px", boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+        padding: "0.75rem clamp(0.75rem, 3vw, 2.5rem)", gap: "0.5rem", flexWrap: "wrap"
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "2rem" }}>
           {/* Logo */}
-          <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.75rem", textDecoration: "none" }}>
+          <Link href="/" style={{ display: "flex", alignItems: "center", gap: "clamp(0.25rem, 1vw, 0.75rem)", textDecoration: "none" }}>
             <div style={{
-              width: "40px", height: "40px",
+              width: "clamp(30px, 6vw, 40px)", height: "clamp(30px, 6vw, 40px)",
               background: "var(--accent)",
+              flexShrink: 0,
               borderRadius: "10px",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: "1.2rem", fontWeight: "800", color: "white"
+              fontSize: "clamp(1rem, 3vw, 1.2rem)", fontWeight: "800", color: "white"
             }}>M</div>
-            <span style={{ fontSize: "1.25rem", fontWeight: "800", color: "var(--text-primary)" }}>
+            <span style={{ fontSize: "clamp(1rem, 3.5vw, 1.25rem)", fontWeight: "800", color: "var(--text-primary)" }}>
               Macavilpaz
             </span>
           </Link>
@@ -57,11 +58,11 @@ export default function LandingPage() {
           </nav>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "clamp(0.5rem, 1.5vw, 1rem)" }}>
           <ThemeToggle />
 
           <Link href="/login" style={{ textDecoration: "none" }}>
-            <button className="btn-primary" style={{ padding: "0.5rem 1.25rem", borderRadius: "99px", boxShadow: "0 2px 8px rgba(248, 113, 113, 0.3)" }}>
+            <button className="btn-primary" style={{ padding: "clamp(0.4rem, 1vw, 0.5rem) clamp(0.75rem, 2vw, 1.25rem)", borderRadius: "99px", boxShadow: "0 2px 8px rgba(248, 113, 113, 0.3)", fontSize: "clamp(0.75rem, 2.5vw, 0.875rem)", whiteSpace: "nowrap" }}>
               Iniciar Sesión
             </button>
           </Link>
@@ -85,19 +86,20 @@ export default function LandingPage() {
           }} />
 
           {/* Contenedor Superior para los textos (encima del fondo) */}
-          <div className="flex-col items-center" style={{ position: "relative", zIndex: 2 }}>
+          <div className="flex-col items-center" style={{ position: "relative", zIndex: 2, padding: "0 1.5rem", width: "100%", textAlign: "center" }}>
             <ScrollReveal delay={0}>
-              <h1 className="hero-title" style={{ textShadow: "0 2px 10px rgba(0,0,0,0.5)", textAlign: "center", color: "#fff" }}>
+              <h1 className="hero-title" style={{ textShadow: "0 2px 10px rgba(0,0,0,0.5)", textAlign: "center", color: "#fff", wordBreak: "break-word" }}>
                 <span style={{ color: "var(--accent)" }}>Constructora Macavilpaz</span>
               </h1>
             </ScrollReveal>
 
             <ScrollReveal delay={200}>
               <p style={{
-                fontSize: "clamp(1rem, 2vw, 1.25rem)",
+                fontSize: "clamp(0.95rem, 3.5vw, 1.25rem)",
                 color: "#e2e8f0",
                 maxWidth: "600px",
-                marginBottom: "3rem",
+                width: "100%",
+                margin: "0 auto 2.5rem auto",
                 lineHeight: "1.6",
                 textShadow: "0 1px 5px rgba(0,0,0,0.8)"
               }}>
@@ -140,12 +142,12 @@ export default function LandingPage() {
               </div>
             </ScrollReveal>
             
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "2rem", alignItems: "stretch" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "2rem", alignItems: "stretch" }}>
               
               <ScrollReveal delay={100}>
                 {/* Tarjeta de Historia */}
                 <div className="card" style={{ 
-                  padding: "3rem", 
+                  padding: "clamp(1.5rem, 5vw, 3rem)", 
                   background: "var(--bg-card)",
                   boxShadow: "0 20px 40px rgba(0,0,0,0.08)",
                   border: "1px solid var(--border)",

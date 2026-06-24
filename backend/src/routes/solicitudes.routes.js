@@ -6,6 +6,7 @@ const upload = require('../middlewares/upload.middleware');
 
 router.get('/', auth, solicitudesController.getSolicitudes);
 router.get('/consolidated-needs', auth, solicitudesController.getConsolidatedNeeds);
+router.get('/reporte/entregados', auth, solicitudesController.getReporteEntregados);
 router.get('/:id', auth, solicitudesController.getSolicitudById);
 router.post('/', auth, solicitudesController.createSolicitud);
 router.patch('/:id/estado', auth, solicitudesController.updateEstado);

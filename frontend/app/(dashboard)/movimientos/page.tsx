@@ -9,6 +9,8 @@ interface Movimiento {
   cantidad: number;
   fecha: string;
   suministro_nombre: string;
+  unidad?: string;
+  solicitud_id?: number | null;
   obra_nombre: string | null;
   usuario_nombre: string;
 }
@@ -91,6 +93,7 @@ export default function MovimientosPage() {
                 <th>Destino / Origen</th>
                 <th>Usuario Responsable</th>
                 <th>Fecha y Hora</th>
+                <th>Origen Solicitud</th>
               </tr>
             </thead>
             <tbody>
@@ -114,7 +117,7 @@ export default function MovimientosPage() {
                     </span>
                   </td>
                   <td style={{ fontWeight: "800", fontSize: "1rem", color: m.tipo_movimiento === "entrada" ? "#10b981" : "#ef4444" }}>
-                    {m.tipo_movimiento === "entrada" ? "+" : "-"}{m.cantidad}
+                    {m.tipo_movimiento === "entrada" ? "+" : "-"}{m.cantidad} <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)", fontWeight: "600" }}>{m.unidad}</span>
                   </td>
                   <td style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -135,6 +138,15 @@ export default function MovimientosPage() {
                       day: '2-digit', month: '2-digit', year: 'numeric',
                       hour: '2-digit', minute: '2-digit'
                     }) : "-"}
+                  </td>
+                  <td>
+                    {m.solicitud_id ? (
+                      <span className="badge badge-gray" style={{ fontSize: "0.75rem", fontFamily: "monospace", padding: "0.2rem 0.5rem" }}>
+                        SOL-{String(m.solicitud_id).padStart(3, "0")}
+                      </span>
+                    ) : (
+                      <span style={{ color: "var(--text-secondary)", fontSize: "0.8rem" }}>-</span>
+                    )}
                   </td>
                 </tr>
               ))}

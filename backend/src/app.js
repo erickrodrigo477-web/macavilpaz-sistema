@@ -25,6 +25,7 @@ app.use("/api/activos/solicitudes", require("./routes/solicitudes_activos.routes
 app.use("/api/almacenes", require("./routes/almacenes.routes"));
 app.use("/api/movimientos", require("./routes/movimientos.routes"));
 app.use("/api/depreciacion", require("./routes/depreciacion.routes"));
+app.use("/api/mantenimiento", require("./routes/mantenimiento.routes"));
 
 // Ruta de prueba
 app.get("/", (req, res) => {

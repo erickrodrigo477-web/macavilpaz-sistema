@@ -8,6 +8,8 @@ interface ConfirmModalProps {
   message: string;
   onConfirm: () => void;
   onCancel: () => void;
+  confirmText?: string;
+  confirmColor?: string;
 }
 
 export default function ConfirmModal({
@@ -16,6 +18,8 @@ export default function ConfirmModal({
   message,
   onConfirm,
   onCancel,
+  confirmText,
+  confirmColor,
 }: ConfirmModalProps) {
   if (!isOpen) return null;
 
@@ -76,12 +80,12 @@ export default function ConfirmModal({
             style={{
               flex: 1,
               padding: "0.85rem",
-              background: "#ef4444",
-              borderColor: "#ef4444",
+              background: confirmColor || "#ef4444",
+              borderColor: confirmColor || "#ef4444",
             }}
             onClick={onConfirm}
           >
-            Eliminar
+            {confirmText || "Eliminar"}
           </button>
         </div>
       </div>

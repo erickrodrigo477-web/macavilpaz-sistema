@@ -35,27 +35,49 @@ const getCategorias = async (req, res) => {
 
 // Crear nuevo suministro
 const createSuministro = async (req, res) => {
-  const { nombre, descripcion, unidad, stock, categoria_id, precio_unitario } = req.body;
+  const { nombre, descripcion, unidad, stock, categoria_id, precio_unitario, stock_critico, almacen_id } = req.body;
+  const usuario_id = req.user.id;
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      'INSERT INTO suministros (nombre, descripcion, unidad, stock, categoria_id, precio_unitario) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-      [nombre, descripcion, unidad, stock, categoria_id, precio_unitario || 0.00]
+    await client.query('BEGIN');
+    const result = await client.query(
+      'INSERT INTO suministros (nombre, descripcion, unidad, stock, categoria_id, precio_unitario, stock_critico) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [nombre, descripcion, unidad, stock, categoria_id, precio_unitario || 0.00, stock_critico || 0.00]
     );
-    res.status(201).json(result.rows[0]);
+    const newSuministro = result.rows[0];
+
+    if (stock > 0 && almacen_id) {
+       await client.query(
+         `INSERT INTO almacen_suministros (almacen_id, suministro_id, stock)
+          VALUES ($1, $2, $3)`,
+         [almacen_id, newSuministro.id, stock]
+       );
+       await client.query(
+         `INSERT INTO movimientos_suministros 
+          (suministro_id, tipo_movimiento, cantidad, usuario_id, fecha) 
+          VALUES ($1, 'entrada', $2, $3, CURRENT_TIMESTAMP)`,
+         [newSuministro.id, stock, usuario_id]
+       );
+    }
+    await client.query('COMMIT');
+    res.status(201).json(newSuministro);
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ mensaje: "Error al crear suministro" });
+  } finally {
+    client.release();
   }
 };
 
 // Actualizar suministro
 const updateSuministro = async (req, res) => {
   const { id } = req.params;
-  const { nombre, descripcion, unidad, stock, categoria_id, precio_unitario } = req.body;
+  const { nombre, descripcion, unidad, stock, categoria_id, precio_unitario, stock_critico } = req.body;
   try {
     const result = await pool.query(
-      'UPDATE suministros SET nombre = $1, descripcion = $2, unidad = $3, stock = $4, categoria_id = $5, precio_unitario = $6 WHERE id = $7 RETURNING *',
-      [nombre, descripcion, unidad, stock, categoria_id, precio_unitario || 0.00, id]
+      'UPDATE suministros SET nombre = $1, descripcion = $2, unidad = $3, stock = $4, categoria_id = $5, precio_unitario = $6, stock_critico = $7 WHERE id = $8 RETURNING *',
+      [nombre, descripcion, unidad, stock, categoria_id, precio_unitario || 0.00, stock_critico || 0.00, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ mensaje: "No encontrado" });
     res.json(result.rows[0]);

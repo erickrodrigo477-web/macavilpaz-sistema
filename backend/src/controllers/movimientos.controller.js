@@ -4,8 +4,9 @@ const getMovimientos = async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
-        m.id, m.tipo_movimiento, m.cantidad, m.fecha,
+        m.id, m.tipo_movimiento, m.cantidad, m.fecha, m.solicitud_id,
         s.nombre as suministro_nombre,
+        s.unidad as unidad,
         o.nombre as obra_nombre,
         u.nombre as usuario_nombre
       FROM movimientos_suministros m

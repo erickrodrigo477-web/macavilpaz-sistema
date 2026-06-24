@@ -19,11 +19,10 @@ interface Activo {
   vida_util?: number;
 }
 
-const estadoBadge: Record<string, { cls: string; label: string }> = {
-  operativo:      { cls: "badge badge-green shadow-sm shadow-green-500/10",  label: "Disponible" },
-  mantenimiento:  { cls: "badge badge-yellow", label: "Mantenimiento" },
-  fuera_servicio: { cls: "badge badge-red",    label: "Fuera de Servicio" },
-  asignado:       { cls: "badge badge-blue",   label: "Asignado" },
+const estadoBadge: Record<string, string> = {
+  "Disponible":    "badge badge-green shadow-sm shadow-green-500/10",
+  "Mantenimiento": "badge badge-yellow",
+  "Asignado":      "badge badge-blue",
 };
 
 export default function ActivosPage() {
@@ -43,6 +42,17 @@ export default function ActivosPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [idAEliminar, setIdAEliminar] = useState<number | null>(null);
 
+  // Modal para ver descripción larga
+  const [descModalOpen, setDescModalOpen] = useState(false);
+  const [descModalContent, setDescModalContent] = useState("");
+  const [descModalTitle, setDescModalTitle] = useState("");
+
+  const abrirDescModal = (activo: Activo) => {
+    setDescModalTitle(activo.nombre);
+    setDescModalContent(activo.descripcion || "Sin descripción");
+    setDescModalOpen(true);
+  };
+
   // Historial de ocupación
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [activoSeleccionadoHist, setActivoSeleccionadoHist] = useState<Activo | null>(null);
@@ -51,6 +61,7 @@ export default function ActivosPage() {
 
   // Nueva Solicitud
   const [obras, setObras] = useState<any[]>([]);
+  const [almacenes, setAlmacenes] = useState<any[]>([]);
   const [solicitudModalOpen, setSolicitudModalOpen] = useState(false);
   const [solicitudForm, setSolicitudForm] = useState({
     activo_id: "",
@@ -62,6 +73,16 @@ export default function ActivosPage() {
   const [activoSchedule, setActivoSchedule] = useState<any[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [overlapError, setOverlapError] = useState<string | null>(null);
+
+  // Toast notification state
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type: "success" | "error" }>({
+    visible: false, message: "", type: "success"
+  });
+
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ visible: true, message, type });
+    setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 3500);
+  };
   
   // Formulario para activo
   const initialForm = {
@@ -69,7 +90,7 @@ export default function ActivosPage() {
     codigo_inventario: "",
     descripcion: "",
     fecha_compra: new Date().toISOString().split("T")[0],
-    estado: "operativo",
+    estado: "Disponible",
     ubicacion: "",
     valor_inicial: 0,
     valor_actual: 0,
@@ -105,10 +126,23 @@ export default function ActivosPage() {
     }
   };
 
+  const fetchAlmacenes = async () => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/almacenes`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setAlmacenes(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error fetching almacenes:", error);
+    }
+  };
+
   useEffect(() => {
     if (token) {
       fetchActivos();
       fetchObras();
+      fetchAlmacenes();
     }
   }, [token]);
 
@@ -228,11 +262,10 @@ export default function ActivosPage() {
       if (res.ok) {
         setSolicitudModalOpen(false);
         setSolicitudForm({ activo_id: "", obra_id: "", fecha_inicio: "", fecha_fin: "", comentario: "" });
-        // Mostrar mensaje de éxito o redirigir opcionalmente
-        alert("Solicitud enviada con éxito.");
+        showToast("Solicitud enviada con éxito.", "success");
       } else {
         const errorData = await res.json();
-        alert(errorData.mensaje || "Error al crear solicitud.");
+        showToast(errorData.mensaje || "Error al crear solicitud.", "error");
       }
     } catch (error) {
       console.error(error);
@@ -287,10 +320,9 @@ export default function ActivosPage() {
           />
           <select value={filtro} onChange={e => setFiltro(e.target.value)} style={{ maxWidth: "180px" }}>
             <option value="todos">Todos los estados</option>
-            <option value="operativo">Operativo</option>
-            <option value="mantenimiento">Mantenimiento</option>
-            <option value="fuera_servicio">Fuera de Servicio</option>
-            <option value="asignado">Asignado</option>
+            <option value="Disponible">Disponible</option>
+            <option value="Asignado">Asignado</option>
+            <option value="Mantenimiento">Mantenimiento</option>
           </select>
           {puedeEditarFisico && (
             <button className="btn-primary" style={{ marginLeft: "auto" }} onClick={() => abrirModal()}>
@@ -312,8 +344,9 @@ export default function ActivosPage() {
                 <tr>
                   <th>Código</th>
                   <th>Nombre</th>
+                  <th>Descripción</th>
                   <th>Ubicación</th>
-                  {puedeEditarFinanciero && <th>Valor Actual</th>}
+                  {puedeEditarFinanciero && <th>Vida Útil Consumida</th>}
                   <th>Estado</th>
                   <th>Acciones</th>
                 </tr>
@@ -323,15 +356,47 @@ export default function ActivosPage() {
                   <tr key={activo.id}>
                     <td><code style={{ fontSize: "0.8rem", color: "var(--accent)" }}>{activo.codigo_inventario}</code></td>
                     <td style={{ fontWeight: "500" }}>{activo.nombre}</td>
+                    <td style={{ color: "var(--text-secondary)", fontSize: "0.8rem", maxWidth: "200px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{activo.descripcion || "-"}</span>
+                        {activo.descripcion && (
+                          <button 
+                            className="btn-secondary" 
+                            style={{ padding: "0.15rem 0.4rem", fontSize: "0.65rem", minWidth: "max-content" }}
+                            onClick={() => abrirDescModal(activo)}
+                            title="Ver descripción completa"
+                          >
+                            Ver
+                          </button>
+                        )}
+                      </div>
+                    </td>
                     <td style={{ color: "var(--text-secondary)", fontSize: "0.8rem" }}>{activo.ubicacion || "-"}</td>
                     {puedeEditarFinanciero && (
                       <td style={{ fontWeight: "600", color: "var(--text-primary)" }}>
-                        {activo.valor_actual ? `$${Number(activo.valor_actual).toLocaleString()}` : "$0"}
+                        {activo.valor_inicial ? (() => {
+                          const fechaCompra = new Date(activo.fecha_compra || new Date());
+                          const hoy = new Date();
+                          const meses = (hoy.getFullYear() - fechaCompra.getFullYear()) * 12 + (hoy.getMonth() - fechaCompra.getMonth());
+                          const anos = meses / 12;
+                          const vidaUtil = Number(activo.vida_util) || 1;
+                          const percent = Math.max(0, Math.min(100, (anos / vidaUtil) * 100));
+                          return (
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <div style={{ width: "60px", height: "6px", background: "var(--bg-secondary)", borderRadius: "3px", overflow: "hidden" }}>
+                                <div style={{ width: `${percent}%`, height: "100%", background: percent >= 100 ? "var(--red)" : "var(--accent)" }}></div>
+                              </div>
+                              <span style={{ fontSize: "0.75rem", color: percent >= 100 ? "var(--red)" : "var(--accent)" }}>{percent.toFixed(1)}%</span>
+                            </div>
+                          );
+                        })() : (
+                          <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)", fontStyle: "italic" }}>Sin valores</span>
+                        )}
                       </td>
                     )}
                     <td>
-                      <span className={estadoBadge[activo.estado]?.cls || "badge badge-gray"}>
-                        {estadoBadge[activo.estado]?.label || activo.estado}
+                      <span className={estadoBadge[activo.estado] || "badge badge-gray"}>
+                        {activo.estado}
                       </span>
                     </td>
                     <td>
@@ -346,7 +411,7 @@ export default function ActivosPage() {
                         </button>
 
                         {/* Botón Solicitar para Técnicos y Supervisores */}
-                        {((user?.rol || "").toLowerCase().includes('técnico') || (user?.rol || "").toLowerCase().includes('supervisor')) && activo.estado !== 'fuera_servicio' && activo.estado !== 'mantenimiento' && (
+                        {((user?.rol || "").toLowerCase().includes('técnico') || (user?.rol || "").toLowerCase().includes('supervisor')) && activo.estado !== 'Mantenimiento' && (
                           <button 
                             className="btn-primary" 
                             style={{ padding: "0.25rem 0.625rem", fontSize: "0.75rem" }}
@@ -436,13 +501,16 @@ export default function ActivosPage() {
 
               <div>
                 <label style={{ display: "block", fontSize: "0.85rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Ubicación</label>
-                <input 
+                <select 
+                  required
                   disabled={!puedeEditarFisico}
-                  placeholder="Ej: Almacén Central" 
                   value={formData.ubicacion}
                   onChange={e => setFormData({...formData, ubicacion: e.target.value})}
                   style={{ width: "100%" }}
-                />
+                >
+                  <option value="">Seleccionar almacén...</option>
+                  {almacenes.map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
+                </select>
               </div>
 
               <div style={{ gridColumn: "span 2" }}>
@@ -475,72 +543,12 @@ export default function ActivosPage() {
                   onChange={e => setFormData({...formData, estado: e.target.value})}
                   style={{ width: "100%" }}
                 >
-                  <option value="operativo">Operativo</option>
-                  <option value="mantenimiento">Mantenimiento</option>
-                  <option value="fuera_servicio">Fuera de Servicio</option>
-                  <option value="asignado">Asignado</option>
+                  <option value="Disponible">Disponible</option>
+                  <option value="Asignado">Asignado</option>
+                  <option value="Mantenimiento">Mantenimiento</option>
                 </select>
               </div>
 
-              {/* Sección Financiera (Contabilidad) */}
-              <div style={{ gridColumn: "span 2", borderBottom: "1px solid var(--border)", paddingBottom: "0.5rem", marginTop: "1rem" }}>
-                <h3 style={{ fontSize: "0.9rem", fontWeight: "700", color: "var(--green)" }}>Control Financiero (Contabilidad)</h3>
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Valor Inicial</label>
-                <input 
-                  type="number"
-                  disabled={!puedeEditarFinanciero}
-                  value={formData.valor_inicial}
-                  onChange={e => setFormData({...formData, valor_inicial: Number(e.target.value)})}
-                  style={{ width: "100%" }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Valor Actual</label>
-                <input 
-                  type="number"
-                  disabled={!puedeEditarFinanciero}
-                  value={formData.valor_actual}
-                  onChange={e => setFormData({...formData, valor_actual: Number(e.target.value)})}
-                  style={{ width: "100%" }}
-                />
-              </div>
-
-              <div style={{ gridColumn: "span 2" }}>
-                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Depreciación Acumulada</label>
-                <input 
-                  type="number"
-                  disabled={!puedeEditarFinanciero}
-                  value={formData.depreciacion_acumulada}
-                  onChange={e => setFormData({...formData, depreciacion_acumulada: Number(e.target.value)})}
-                  style={{ width: "100%" }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Valor Residual</label>
-                <input 
-                  type="number"
-                  disabled={!puedeEditarFinanciero}
-                  value={formData.valor_residual}
-                  onChange={e => setFormData({...formData, valor_residual: Number(e.target.value)})}
-                  style={{ width: "100%" }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Vida Útil (Años)</label>
-                <input 
-                  type="number"
-                  disabled={!puedeEditarFinanciero}
-                  value={formData.vida_util}
-                  onChange={e => setFormData({...formData, vida_util: Number(e.target.value)})}
-                  style={{ width: "100%" }}
-                />
-              </div>
 
               <div style={{ display: "flex", gap: "1rem", marginTop: "1.5rem", gridColumn: "span 2" }}>
                 <button type="button" className="btn-secondary" style={{ flex: 1, padding: "0.85rem" }} onClick={() => setModalAbierto(false)}>Cancelar</button>
@@ -762,6 +770,58 @@ export default function ActivosPage() {
           setIdAEliminar(null);
         }}
       />
+
+      {/* Modal Ver Descripción */}
+      {descModalOpen && (
+        <div className="modal-overlay" onClick={() => setDescModalOpen(false)}>
+          <div className="modal-content max-w-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="text-xl font-bold text-primary">Descripción del Activo</h2>
+              <button className="modal-close" onClick={() => setDescModalOpen(false)}>
+                &times;
+              </button>
+            </div>
+            <div style={{ marginTop: "1rem" }}>
+              <p style={{ fontSize: "0.9rem", color: "var(--accent)", fontWeight: "600", marginBottom: "0.5rem" }}>{descModalTitle}</p>
+              <div style={{ padding: "1rem", background: "var(--bg-secondary)", borderRadius: "0.5rem", fontSize: "0.9rem", color: "var(--text-primary)", whiteSpace: "pre-wrap", lineHeight: "1.5" }}>
+                {descModalContent}
+              </div>
+            </div>
+            <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn-primary" onClick={() => setDescModalOpen(false)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      <div style={{
+        position: "fixed",
+        bottom: "2rem",
+        right: "2rem",
+        background: toast.type === "success" ? "#10b981" : "#ef4444",
+        color: "white",
+        padding: "1rem 1.5rem",
+        borderRadius: "0.75rem",
+        fontWeight: "600",
+        fontSize: "0.9rem",
+        boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+        transform: toast.visible ? "translateY(0) scale(1)" : "translateY(20px) scale(0.95)",
+        opacity: toast.visible ? 1 : 0,
+        pointerEvents: toast.visible ? "auto" : "none",
+        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        gap: "0.75rem"
+      }}>
+        {toast.type === "success" ? (
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        ) : (
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+        )}
+        {toast.message}
+      </div>
     </div>
   );
 }

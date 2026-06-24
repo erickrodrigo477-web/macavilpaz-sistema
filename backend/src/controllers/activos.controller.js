@@ -11,6 +11,32 @@ const getActivos = async (req, res) => {
   }
 };
 
+// Obtener activos de un almacen específico por su nombre
+const getActivosPorAlmacen = async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Primero obtenemos el nombre del almacén
+    const almacenRes = await pool.query('SELECT nombre FROM almacenes WHERE id = $1', [id]);
+    if (almacenRes.rows.length === 0) {
+      return res.status(404).json({ mensaje: 'Almacén no encontrado' });
+    }
+    const almacenNombre = almacenRes.rows[0].nombre;
+
+    // Buscamos activos cuya ubicacion contenga el nombre del almacén (insensible a mayúsculas)
+    const result = await pool.query(
+      `SELECT id, nombre, codigo_inventario, estado, ubicacion, valor_actual
+       FROM activos_fijos
+       WHERE LOWER(ubicacion) = LOWER($1)
+       ORDER BY nombre ASC`,
+      [almacenNombre]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ mensaje: 'Error al obtener activos del almacén' });
+  }
+};
+
 // Crear un nuevo activo
 const createActivo = async (req, res) => {
   const { rol } = req.user;
@@ -153,6 +179,7 @@ const deleteActivo = async (req, res) => {
 
 module.exports = {
   getActivos,
+  getActivosPorAlmacen,
   createActivo,
   updateActivo,
   deleteActivo

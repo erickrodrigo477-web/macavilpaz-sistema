@@ -223,12 +223,32 @@ const entregarMateriales = async (req, res) => {
         [item.cantidad_entregada, item.suministro_id]
       );
 
+      // 3.5. Descontar del stock del almacén de recogida
+      if (solicitud.almacen_recogida_id) {
+        await client.query(
+          'UPDATE almacen_suministros SET stock = GREATEST(0, stock - $1) WHERE almacen_id = $2 AND suministro_id = $3',
+          [item.cantidad_entregada, solicitud.almacen_recogida_id, item.suministro_id]
+        );
+      } else {
+        // Fallback: tratar de descontar del almacén central o el primero que tenga stock
+        await client.query(
+          `UPDATE almacen_suministros 
+           SET stock = GREATEST(0, stock - $1) 
+           WHERE almacen_id = (
+             SELECT almacen_id FROM almacen_suministros 
+             WHERE suministro_id = $2 AND stock >= $1 
+             LIMIT 1
+           ) AND suministro_id = $2`,
+          [item.cantidad_entregada, item.suministro_id]
+        );
+      }
+
       // 4. Registrar movimiento de salida
       await client.query(
         `INSERT INTO movimientos_suministros 
-         (suministro_id, tipo_movimiento, cantidad, usuario_id, obra_id, fecha) 
-         VALUES ($1, 'salida', $2, $3, $4, CURRENT_TIMESTAMP)`,
-        [item.suministro_id, item.cantidad_entregada, usuario_id, solicitud.obra_id]
+         (suministro_id, tipo_movimiento, cantidad, usuario_id, obra_id, fecha, solicitud_id) 
+         VALUES ($1, 'salida', $2, $3, $4, CURRENT_TIMESTAMP, $5)`,
+        [item.suministro_id, item.cantidad_entregada, usuario_id, solicitud.obra_id, id]
       );
     }
 
@@ -306,6 +326,70 @@ const getConsolidatedNeeds = async (req, res) => {
   }
 };
 
+// Generar reporte detallado de entregados
+const getReporteEntregados = async (req, res) => {
+  const { startDate, endDate } = req.query;
+
+  if (!startDate || !endDate) {
+    return res.status(400).json({ mensaje: "Faltan fechas de inicio o fin" });
+  }
+
+  try {
+    // 1. Obtener las solicitudes entregadas en ese rango
+    const solicitudesRes = await pool.query(`
+      SELECT s.id, s.fecha_solicitud, s.fecha_aprobacion,
+             o.nombre as obra_nombre, u.nombre as usuario_nombre
+      FROM solicitudes_materiales s
+      JOIN obras o ON s.obra_id = o.id
+      JOIN usuarios u ON s.usuario_id = u.id
+      WHERE s.estado = 'Entregado Totalmente'
+        AND s.fecha_aprobacion::date >= $1 
+        AND s.fecha_aprobacion::date <= $2
+      ORDER BY s.fecha_aprobacion ASC
+    `, [startDate, endDate]);
+
+    if (solicitudesRes.rows.length === 0) {
+      return res.json([]);
+    }
+
+    const solicitudesIds = solicitudesRes.rows.map(s => s.id);
+
+    // 2. Obtener los detalles (ítems entregados y precios) de esas solicitudes
+    const itemsRes = await pool.query(`
+      SELECT d.solicitud_id, sum.nombre as suministro_nombre, sum.unidad, sum.precio_unitario, d.cantidad_entregada
+      FROM detalle_solicitudes d
+      JOIN suministros sum ON d.suministro_id = sum.id
+      WHERE d.solicitud_id = ANY($1::int[]) AND d.cantidad_entregada > 0
+    `, [solicitudesIds]);
+
+    // 3. Agrupar los ítems por solicitud
+    const reporte = solicitudesRes.rows.map(sol => {
+      const items = itemsRes.rows.filter(item => item.solicitud_id === sol.id);
+      let costo_total = 0;
+      
+      const itemsDetalle = items.map(item => {
+        const subtotal = item.cantidad_entregada * (item.precio_unitario || 0);
+        costo_total += subtotal;
+        return {
+          ...item,
+          subtotal
+        };
+      });
+
+      return {
+        ...sol,
+        items: itemsDetalle,
+        costo_total
+      };
+    });
+
+    res.json(reporte);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ mensaje: "Error al generar reporte de entregados" });
+  }
+};
+
 module.exports = {
   getSolicitudes,
   getSolicitudById,
@@ -313,5 +397,6 @@ module.exports = {
   updateEstado,
   approveSolicitud,
   entregarMateriales,
-  getConsolidatedNeeds
+  getConsolidatedNeeds,
+  getReporteEntregados
 };

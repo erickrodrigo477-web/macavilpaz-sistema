@@ -12,6 +12,7 @@ interface Suministro {
   categoria_nombre: string;
   descripcion: string;
   precio_unitario: number | string;
+  stock_critico?: number | string;
   breakdown?: { almacen_id: number; almacen_nombre: string; stock: number }[];
 }
 
@@ -20,9 +21,10 @@ interface Categoria {
   nombre: string;
 }
 
-function stockBadge(stock: number) {
-  if (stock <= 10)  return { cls: "badge badge-red",    label: "Bajo" };
-  if (stock <= 50)  return { cls: "badge badge-yellow", label: "Medio" };
+function stockBadge(stock: number, stock_critico?: number | string) {
+  const critico = typeof stock_critico === 'number' ? stock_critico : parseFloat(stock_critico as string) || 10;
+  if (stock <= critico)  return { cls: "badge badge-red",    label: "Bajo" };
+  if (stock <= critico * 5)  return { cls: "badge badge-yellow", label: "Medio" };
   return { cls: "badge badge-green", label: "OK" };
 }
 
@@ -63,7 +65,9 @@ export default function SuministrosPage() {
     unidad: "unidad",
     stock: 0,
     categoria_id: "",
-    precio_unitario: 0
+    precio_unitario: 0,
+    stock_critico: 0,
+    almacen_id: ""
   });
 
 
@@ -99,11 +103,13 @@ export default function SuministrosPage() {
         unidad: sum.unidad,
         stock: sum.stock,
         categoria_id: sum.categoria_id.toString(),
-        precio_unitario: typeof sum.precio_unitario === 'number' ? sum.precio_unitario : parseFloat(sum.precio_unitario || "0")
+        precio_unitario: typeof sum.precio_unitario === 'number' ? sum.precio_unitario : parseFloat(sum.precio_unitario || "0"),
+        stock_critico: typeof sum.stock_critico === 'number' ? sum.stock_critico : parseFloat((sum.stock_critico as string) || "0"),
+        almacen_id: ""
       });
     } else {
       setEditando(null);
-      setFormData({ nombre: "", descripcion: "", unidad: "unidad", stock: 0, categoria_id: "", precio_unitario: 0 });
+      setFormData({ nombre: "", descripcion: "", unidad: "unidad", stock: 0, categoria_id: "", precio_unitario: 0, stock_critico: 0, almacen_id: "" });
     }
     setModalAbierto(true);
   };
@@ -312,7 +318,8 @@ export default function SuministrosPage() {
                   No se encontraron suministros.
                 </td></tr>
               ) : filtrados.map(s => {
-                const nivel = stockBadge(s.stock);
+                const critico = typeof s.stock_critico === 'number' ? s.stock_critico : parseFloat((s.stock_critico as string) || "10");
+                const nivel = stockBadge(s.stock, s.stock_critico);
                 return (
                   <tr key={s.id}>
                     <td style={{ fontWeight: "600" }}>{s.nombre}</td>
@@ -323,7 +330,7 @@ export default function SuministrosPage() {
                     <td style={{ color: "var(--text-secondary)" }}>{s.unidad}</td>
                     <td style={{ fontWeight: "600", color: "var(--text-primary)" }}>Bs. {parseFloat((s.precio_unitario || 0).toString()).toFixed(2)}</td>
                     <td>
-                      <div style={{ fontWeight: "800", fontSize: "1rem", color: s.stock <= 10 ? "#ef4444" : "var(--text-primary)" }}>
+                      <div style={{ fontWeight: "800", fontSize: "1rem", color: s.stock <= critico ? "#ef4444" : "var(--text-primary)" }}>
                         {s.stock}
                       </div>
                     </td>
@@ -379,13 +386,26 @@ export default function SuministrosPage() {
                   <label style={{ display: "block", fontSize: "0.8rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.4rem" }}>Unidad de Medida</label>
                   <input required placeholder="Ej: bolsa, m³, kg" value={formData.unidad} onChange={e => setFormData({...formData, unidad: e.target.value})} />
                 </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.4rem" }}>Stock {editando ? "Actual" : "Inicial"}</label>
-                  <input type="number" required min="0" value={formData.stock} onChange={e => setFormData({...formData, stock: parseInt(e.target.value) || 0})} />
+                <div style={{ display: "flex", gap: "1rem" }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.4rem" }}>Stock {editando ? "Actual" : "Inicial"}</label>
+                    <input type="number" required min="0" value={formData.stock} onChange={e => setFormData({...formData, stock: parseInt(e.target.value) || 0})} disabled={!!editando} title={editando ? "El stock debe gestionarse mediante reabastecimiento o movimientos" : ""} style={{ opacity: editando ? 0.6 : 1 }} />
+                  </div>
+                  {!editando && formData.stock > 0 && (
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontSize: "0.8rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.4rem" }}>Almacén Inicial</label>
+                      <select required value={formData.almacen_id} onChange={e => setFormData({...formData, almacen_id: e.target.value})}>
+                        <option value="">Seleccionar almacén...</option>
+                        {almacenes.map(a => (
+                          <option key={a.id} value={a.id}>{a.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               </div>
               
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "0.8rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.4rem" }}>Categoría</label>
                   <select required value={formData.categoria_id} onChange={e => setFormData({...formData, categoria_id: e.target.value})}>
@@ -396,8 +416,12 @@ export default function SuministrosPage() {
                   </select>
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.4rem" }}>Precio Unitario (Bs.)</label>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.4rem" }}>Precio U. (Bs.)</label>
                   <input type="number" required min="0" step="0.01" placeholder="0.00" value={formData.precio_unitario} onChange={e => setFormData({...formData, precio_unitario: parseFloat(e.target.value) || 0})} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.4rem" }}>Stock Crítico</label>
+                  <input type="number" min="0" placeholder="Opcional" value={formData.stock_critico} onChange={e => setFormData({...formData, stock_critico: parseInt(e.target.value) || 0})} />
                 </div>
               </div>
               
@@ -433,7 +457,6 @@ export default function SuministrosPage() {
                   required
                   value={selectedAlmacenRestock} 
                   onChange={e => setSelectedAlmacenRestock(e.target.value)}
-                  style={{ background: "rgba(var(--accent-rgb), 0.05)", borderColor: "var(--accent)" }}
                 >
                   <option value="">Seleccionar almacén</option>
                   {almacenes.map(a => (

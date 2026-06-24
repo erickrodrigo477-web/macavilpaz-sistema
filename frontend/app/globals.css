@@ -282,9 +282,9 @@ body {
 
 .feature-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 2.5rem;
-  margin-top: 4rem;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: clamp(1rem, 4vw, 2.5rem);
+  margin-top: clamp(2rem, 6vw, 4rem);
 }
 
 .text-gradient {
@@ -508,4 +508,135 @@ input:focus, select:focus, textarea:focus {
 }
 .sidebar-nav::-webkit-scrollbar-thumb:hover {
   background: rgba(var(--accent-rgb), 0.3);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   RESPONSIVIDAD MÓVIL
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* La bottom nav solo es visible en móvil */
+.mobile-nav {
+  display: none !important;
+}
+
+/* El sidebar solo es visible en escritorio */
+.sidebar-desktop {
+  display: flex;
+}
+
+@media (max-width: 768px) {
+
+  /* ── Navegación ──────────────────────────────────────────────────────────── */
+  .mobile-nav {
+    display: flex !important;
+  }
+
+  .sidebar-desktop {
+    display: none !important;
+  }
+
+  /* ── Topbar ──────────────────────────────────────────────────────────────── */
+  .topbar {
+    height: 56px !important;
+    padding: 0 1rem !important;
+  }
+
+  .topbar-title {
+    font-size: 1.1rem !important;
+  }
+
+  .topbar-subtitle {
+    display: none !important;
+  }
+
+  /* ── Contenido principal: espacio para la bottom nav ─────────────────────── */
+  main {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom)) !important;
+  }
+
+  /* ── Tablas: scroll horizontal en pantallas pequeñas ─────────────────────── */
+  table {
+    min-width: 560px;
+  }
+
+  th, td {
+    padding: 0.65rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  /* ── Cards y grids ───────────────────────────────────────────────────────── */
+  .feature-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+
+  .card {
+    padding: 1rem;
+    border-radius: 0.75rem;
+  }
+
+  /* ── Modales: se abren desde abajo en móvil ─────────────────────────────── */
+  .modal-overlay {
+    padding: 0.5rem;
+    align-items: flex-end;
+  }
+
+  .modal-content {
+    max-width: 100% !important;
+    border-radius: 1.25rem 1.25rem 0 0;
+    max-height: 90vh;
+    padding: 1.25rem;
+  }
+
+  /* ── Formularios: evita zoom en iOS ─────────────────────────────────────── */
+  input, select, textarea {
+    font-size: 1rem;
+    padding: 0.65rem 0.875rem;
+  }
+
+  /* ── Botones ─────────────────────────────────────────────────────────────── */
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    padding: 0.65rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  /* ── Flex layouts ────────────────────────────────────────────────────────── */
+  .flex-between {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  /* ── Landing page ────────────────────────────────────────────────────────── */
+  .section-padding {
+    padding: 4rem 0;
+  }
+
+  .hero-subtitle {
+    font-size: 1rem;
+  }
+
+  /* ── Desactivar partículas animadas en móvil (rendimiento) ───────────────── */
+  .square-particle {
+    display: none;
+  }
+
+  /* ── Contenedor principal de páginas ─────────────────────────────────────── */
+  .page-content {
+    border-radius: 0 !important;
+    overflow: auto !important;
+    overflow-x: auto !important;
+  }
+}
+
+/* ── Tablet: ajustes intermedios ────────────────────────────────────────────── */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .feature-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  th, td {
+    padding: 0.75rem 0.875rem;
+  }
 }

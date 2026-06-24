@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const dashboardController = require('../controllers/dashboard.controller');
+const authMiddleware = require('../middlewares/auth.middleware');
 
-// Nota: Aquí deberíamos aplicar un middleware de auth, pero por ahora lo dejaremos abierto para facilitar pruebas
-router.get('/stats', dashboardController.getStats);
+router.get('/stats', authMiddleware, dashboardController.getStats);
 
 module.exports = router;

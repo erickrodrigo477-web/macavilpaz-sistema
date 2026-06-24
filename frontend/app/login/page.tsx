@@ -13,6 +13,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [isRecovering, setIsRecovering] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryMessage, setRecoveryMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -24,6 +29,29 @@ export default function LoginPage() {
     } catch (err: any) {
       setError(err.message || "Credenciales incorrectas");
       setLoading(false);
+    }
+  };
+
+  const handleRecover = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecoveryLoading(true);
+    setRecoveryMessage(null);
+
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/recuperar-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: recoveryEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.mensaje || "Error al recuperar contraseña");
+      
+      setRecoveryMessage({ type: 'success', text: "Se ha enviado una contraseña temporal a tu correo." });
+      setRecoveryEmail("");
+    } catch (err: any) {
+      setRecoveryMessage({ type: 'error', text: err.message });
+    } finally {
+      setRecoveryLoading(false);
     }
   };
 
@@ -93,52 +121,117 @@ export default function LoginPage() {
 
         {/* Card */}
         <div className="card" style={{ padding: "2rem" }}>
-          <h2 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "1.5rem" }}>
-            Iniciar Sesión
-          </h2>
+          {!isRecovering ? (
+            <>
+              <h2 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "1.5rem" }}>
+                Iniciar Sesión
+              </h2>
 
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <div>
-              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.4rem" }}>
-                Correo electrónico
-              </label>
-              <input
-                type="email"
-                placeholder="admin@macavilpaz.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-              />
-            </div>
+              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.4rem" }}>
+                    Correo electrónico
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="admin@macavilpaz.com"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
 
-            <div>
-              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.4rem" }}>
-                Contraseña
-              </label>
-              <input
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                required
-              />
-            </div>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.4rem" }}>
+                    <label style={{ fontSize: "0.8rem", fontWeight: "600", color: "var(--text-secondary)" }}>
+                      Contraseña
+                    </label>
+                    <button 
+                      type="button" 
+                      onClick={() => setIsRecovering(true)}
+                      style={{ fontSize: "0.8rem", color: "var(--accent)", background: "none", border: "none", cursor: "pointer", fontWeight: "600", textDecoration: "underline" }}
+                    >
+                      ¿Olvidaste tu contraseña?
+                    </button>
+                  </div>
+                  <input
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
 
-            {error && (
-              <p style={{ color: "#f87171", fontSize: "0.8rem", background: "#7f1d1d22", padding: "0.5rem 0.75rem", borderRadius: "0.5rem" }}>
-                {error}
+                {error && (
+                  <p style={{ color: "#f87171", fontSize: "0.8rem", background: "#7f1d1d22", padding: "0.5rem 0.75rem", borderRadius: "0.5rem" }}>
+                    {error}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={loading}
+                  style={{ marginTop: "0.5rem", padding: "0.75rem", fontSize: "0.95rem", opacity: loading ? 0.7 : 1 }}
+                >
+                  {loading ? "Ingresando..." : "Ingresar al Sistema"}
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <h2 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "0.5rem" }}>
+                Recuperar Contraseña
+              </h2>
+              <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1.5rem" }}>
+                Ingresa tu correo y te enviaremos una contraseña temporal para ingresar.
               </p>
-            )}
 
-            <button
-              type="submit"
-              className="btn-primary"
-              disabled={loading}
-              style={{ marginTop: "0.5rem", padding: "0.75rem", fontSize: "0.95rem", opacity: loading ? 0.7 : 1 }}
-            >
-              {loading ? "Ingresando..." : "Ingresar al Sistema"}
-            </button>
-          </form>
+              <form onSubmit={handleRecover} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: "600", color: "var(--text-secondary)", marginBottom: "0.4rem" }}>
+                    Correo electrónico
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="admin@macavilpaz.com"
+                    value={recoveryEmail}
+                    onChange={e => setRecoveryEmail(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {recoveryMessage && (
+                  <p style={{ 
+                    color: recoveryMessage.type === 'error' ? "#f87171" : "#4ade80", 
+                    fontSize: "0.8rem", 
+                    background: recoveryMessage.type === 'error' ? "#7f1d1d22" : "#14532d22", 
+                    padding: "0.5rem 0.75rem", borderRadius: "0.5rem" 
+                  }}>
+                    {recoveryMessage.text}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={recoveryLoading}
+                  style={{ marginTop: "0.5rem", padding: "0.75rem", fontSize: "0.95rem", opacity: recoveryLoading ? 0.7 : 1 }}
+                >
+                  {recoveryLoading ? "Enviando..." : "Enviar Contraseña Temporal"}
+                </button>
+
+                <button 
+                  type="button" 
+                  onClick={() => setIsRecovering(false)}
+                  style={{ fontSize: "0.85rem", color: "var(--text-secondary)", background: "none", border: "none", cursor: "pointer", fontWeight: "600", marginTop: "0.5rem", textDecoration: "underline" }}
+                >
+                  Volver al Login
+                </button>
+              </form>
+            </>
+          )}
         </div>
 
         <p style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: "0.75rem", marginTop: "1.5rem" }}>

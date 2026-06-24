@@ -19,20 +19,23 @@ export default function Topbar() {
   const config = routeConfig[pathname] || { title: "Macavilpaz", subtitle: "Sistema de Gestión" };
 
   return (
-    <header style={{
-      height: "80px",
-      background: "var(--bg-secondary)",
-      borderBottom: "1px solid var(--border)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "0 2rem",
-      flexShrink: 0,
-      position: "relative",
-      overflow: "hidden",
-      boxShadow: "var(--header-shadow)",
-      zIndex: 50,
-    }}>
+    <header
+      className="topbar"
+      style={{
+        height: "80px",
+        background: "var(--bg-secondary)",
+        borderBottom: "1px solid var(--border)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 2rem",
+        flexShrink: 0,
+        position: "relative",
+        overflow: "hidden",
+        boxShadow: "var(--header-shadow)",
+        zIndex: 50,
+      }}
+    >
       {/* Formas animadas de fondo */}
       <div className="header-shape header-shape-1" style={{ borderRadius: "30% 70% 70% 30% / 30% 30% 70% 70%" }} />
       <div className="header-shape header-shape-2" style={{ borderRadius: "50% 50% 50% 50% / 40% 40% 60% 60%" }} />
@@ -60,22 +63,28 @@ export default function Topbar() {
       <div className="square-particle sq-20" />
 
       <div style={{ position: "relative", zIndex: 10 }}>
-        <h1 style={{ 
-          fontSize: "1.45rem", 
-          fontWeight: "800", 
-          color: "var(--text-primary)",
-          letterSpacing: "-0.02em",
-          lineHeight: "1.2"
-        }}>
+        <h1
+          className="topbar-title"
+          style={{ 
+            fontSize: "1.45rem", 
+            fontWeight: "800", 
+            color: "var(--text-primary)",
+            letterSpacing: "-0.02em",
+            lineHeight: "1.2"
+          }}
+        >
           {config.title}
         </h1>
         {config.subtitle && (
-          <p style={{ 
-            fontSize: "0.95rem", 
-            color: "var(--text-secondary)", 
-            marginTop: "2px",
-            opacity: 0.8
-          }}>
+          <p
+            className="topbar-subtitle"
+            style={{ 
+              fontSize: "0.95rem", 
+              color: "var(--text-secondary)", 
+              marginTop: "2px",
+              opacity: 0.8
+            }}
+          >
             {config.subtitle}
           </p>
         )}

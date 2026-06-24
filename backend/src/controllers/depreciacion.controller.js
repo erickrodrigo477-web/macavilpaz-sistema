@@ -86,7 +86,37 @@ const syncDepreciacion = async (req, res) => {
   }
 };
 
+// Actualizar valores financieros de un activo
+const updateValoresFinancieros = async (req, res) => {
+  const { id } = req.params;
+  const { valor_inicial, valor_residual, vida_util } = req.body;
+  const { rol } = req.user;
+
+  if (rol !== 'Administrador' && rol !== 'Contabilidad') {
+    return res.status(403).json({ mensaje: "No tiene permisos para modificar datos financieros" });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE activos_fijos 
+       SET valor_inicial = $1, valor_residual = $2, vida_util = $3
+       WHERE id = $4 RETURNING *`,
+      [valor_inicial || 0, valor_residual || 0, vida_util || 1, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ mensaje: 'Activo no encontrado' });
+    }
+
+    res.json({ mensaje: 'Valores financieros actualizados correctamente', activo: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ mensaje: 'Error al actualizar valores financieros' });
+  }
+};
+
 module.exports = {
   getDepreciaciones,
-  syncDepreciacion
+  syncDepreciacion,
+  updateValoresFinancieros
 };

@@ -1,7 +1,9 @@
+import React from "react";
+
 interface StatsCardProps {
   title: string;
   value: string | number;
-  icon: string;
+  icon: React.ReactNode;
   color?: string;
   subtitle?: string;
 }

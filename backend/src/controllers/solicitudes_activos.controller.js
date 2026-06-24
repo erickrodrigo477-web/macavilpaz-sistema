@@ -5,7 +5,7 @@ const getSolicitudes = async (req, res) => {
   const { rol, id: usuario_id } = req.user;
   try {
     let query = `
-      SELECT s.*, s.pdf_entrega, a.nombre as activo_nombre, o.nombre as obra_nombre, u.nombre as solicitante_nombre,
+      SELECT s.*, s.pdf_entrega, s.comentario, a.nombre as activo_nombre, a.codigo_inventario as activo_codigo, o.nombre as obra_nombre, u.nombre as solicitante_nombre,
              u2.nombre as aprobado_por_nombre, u3.nombre as entregado_por_nombre
       FROM solicitudes_activos s
       JOIN activos_fijos a ON s.activo_id = a.id
@@ -43,7 +43,7 @@ const getActivoSchedule = async (req, res) => {
     const result = await pool.query(
       `SELECT id, fecha_inicio, fecha_fin, estado, usuario_id 
        FROM solicitudes_activos 
-       WHERE activo_id = $1 AND estado NOT IN ('Rechazado', 'Devuelto')
+       WHERE activo_id = $1 AND LOWER(estado) NOT IN ('rechazado', 'devuelto')
        ORDER BY fecha_inicio ASC`,
       [activo_id]
     );
@@ -74,7 +74,7 @@ const createSolicitud = async (req, res) => {
     const overlapRes = await pool.query(
       `SELECT id FROM solicitudes_activos 
        WHERE activo_id = $1 
-       AND estado NOT IN ('Rechazado', 'Devuelto', 'Finalizado')
+       AND LOWER(estado) NOT IN ('rechazado', 'devuelto', 'finalizado')
        AND (
          (fecha_inicio <= $2 AND fecha_fin >= $2) OR
          (fecha_inicio <= $3 AND fecha_fin >= $3) OR

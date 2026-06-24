@@ -5,17 +5,20 @@ import { useAuth } from "@/app/context/AuthContext";
 
 interface Solicitud {
   id: number;
+  activo_id: number;
   activo_nombre: string;
+  obra_id: number;
   obra_nombre: string;
+  usuario_id: number;
   solicitante_nombre: string;
   fecha_solicitud: string;
   fecha_inicio: string;
   fecha_fin: string;
   estado: string;
-  comentario: string;
   aprobado_por_nombre?: string;
   entregado_por_nombre?: string;
   pdf_entrega?: string;
+  comentario?: string;
 }
 
 interface Activo { id: number; nombre: string; estado: string; }
@@ -244,6 +247,11 @@ export default function SolicitudesActivosPage() {
                     >
                       {s.estado}
                     </span>
+                    {(s.estado || "").trim().toLowerCase() === 'rechazado' && s.comentario && (
+                      <div style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "#ef4444", background: "#fef2f2", padding: "0.5rem", borderRadius: "0.25rem", border: "1px solid #fecaca" }}>
+                        <strong>Motivo del rechazo:</strong> {s.comentario}
+                      </div>
+                    )}
                     {(user?.rol === 'Administrador' || user?.rol === 'Almacén') && (
                       <div className="flex gap-1">
                         {s.estado === 'aprobado' && (

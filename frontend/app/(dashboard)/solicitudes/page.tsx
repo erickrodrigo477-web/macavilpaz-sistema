@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface Solicitud {
   id: number;
@@ -61,6 +63,13 @@ export default function SolicitudesPage() {
   const [selectedSolicitud, setSelectedSolicitud] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<{url: string, name: string, title: string} | null>(null);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportForm, setReportForm] = useState({
+    startDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
+  });
+  const [reportLoading, setReportLoading] = useState(false);
 
   // Formulario Nueva Solicitud
   const [formData, setFormData] = useState({
@@ -226,6 +235,182 @@ export default function SolicitudesPage() {
     }
   };
 
+  const fetchAndGeneratePDF = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setReportLoading(true);
+    
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/solicitudes/reporte/entregados?startDate=${reportForm.startDate}&endDate=${reportForm.endDate}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+
+      if (!Array.isArray(data) || data.length === 0) {
+        alert("No hay solicitudes entregadas en este rango de fechas.");
+        setReportLoading(false);
+        return;
+      }
+
+      const doc = new jsPDF();
+      doc.setFontSize(16);
+      doc.text("Reporte Detallado de Solicitudes Entregadas", 14, 20);
+      
+      doc.setFontSize(10);
+      doc.text(`Rango: ${new Date(reportForm.startDate).toLocaleDateString()} - ${new Date(reportForm.endDate).toLocaleDateString()}`, 14, 28);
+      doc.text(`Total Solicitudes: ${data.length}`, 14, 34);
+
+      let startY = 45;
+      let granTotal = 0;
+
+      data.forEach((sol: any, index: number) => {
+        if (startY > 250) {
+          doc.addPage();
+          startY = 20;
+        }
+
+        doc.setFillColor(240, 240, 240);
+        doc.rect(14, startY - 5, 182, 16, 'F');
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.text(`SOL-${String(sol.id).padStart(3, "0")} - Obra: ${sol.obra_nombre}`, 16, startY);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Solicitante: ${sol.usuario_nombre} | Aprobación: ${new Date(sol.fecha_aprobacion).toLocaleDateString()}`, 16, startY + 6);
+        
+        const tableRows: any[] = [];
+        sol.items.forEach((item: any) => {
+          tableRows.push([
+            item.suministro_nombre,
+            item.unidad,
+            item.cantidad_entregada,
+            `Bs. ${Number(item.precio_unitario || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            `Bs. ${Number(item.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          ]);
+        });
+
+        autoTable(doc, {
+          head: [["Suministro", "Unidad", "Cant.", "P.Unitario", "Subtotal"]],
+          body: tableRows,
+          startY: startY + 12,
+          theme: 'plain',
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [200, 200, 200], textColor: [0, 0, 0], fontStyle: 'bold' },
+          columnStyles: {
+            2: { halign: 'center' },
+            3: { halign: 'right' },
+            4: { halign: 'right', fontStyle: 'bold' }
+          },
+          margin: { left: 16, right: 16 },
+        });
+
+        // @ts-ignore
+        const finalY = doc.lastAutoTable.finalY;
+        
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text(`Costo Total Solicitud: Bs. ${Number(sol.costo_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 128, finalY + 6);
+
+        granTotal += Number(sol.costo_total || 0);
+        startY = finalY + 16;
+      });
+
+      if (startY > 270) {
+        doc.addPage();
+        startY = 20;
+      }
+      doc.setFillColor(16, 185, 129);
+      doc.rect(14, startY, 182, 12, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text(`COSTO TOTAL DEL PERIODO: Bs. ${granTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 16, startY + 8);
+
+      const pdfBlobUrl = doc.output('bloburl');
+      setPdfPreview(pdfBlobUrl.toString());
+      setReportModalOpen(false);
+
+    } catch (error) {
+      console.error("Error al generar reporte", error);
+      alert("Error al obtener los datos del reporte.");
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const generarPlantillaActa = () => {
+    if (!selectedSolicitud) return;
+
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text("ACTA DE CONFORMIDAD DE ENTREGA DE MATERIALES", 105, 20, { align: "center" });
+
+    doc.setFontSize(11);
+    doc.text(`N° Solicitud: SOL-${String(selectedSolicitud.id).padStart(3, "0")}`, 14, 35);
+    doc.text(`Fecha de Impresión: ${new Date().toLocaleDateString()}`, 14, 42);
+    doc.text(`Obra/Proyecto: ${selectedSolicitud.obra_nombre}`, 14, 49);
+    doc.text(`Almacén: ${selectedSolicitud.almacen_recogida_nombre || "Central"}`, 14, 56);
+    doc.text(`Entregado por: ${user?.nombre || "____________________"}`, 14, 63);
+
+    // Obtener los ítems que se planean entregar ahora mismo
+    const tableRows: any[] = [];
+    const itemsToDeliver = selectedSolicitud.items
+      .filter((i:any) => i.saldo_pendiente > 0)
+      .map((i:any) => {
+        const inputEl = document.getElementById(`deliver-${i.suministro_id}`) as HTMLInputElement;
+        return {
+          suministro_nombre: i.suministro_nombre,
+          unidad: i.unidad,
+          cantidad_entregada: inputEl ? parseInt(inputEl.value || "0") : 0
+        };
+      })
+      .filter((i:any) => i.cantidad_entregada > 0);
+
+    if (itemsToDeliver.length === 0) {
+      alert("No hay cantidades marcadas para entregar. Coloque al menos una cantidad mayor a 0 para generar la plantilla.");
+      return;
+    }
+
+    itemsToDeliver.forEach((item: any) => {
+      tableRows.push([
+        item.suministro_nombre,
+        item.unidad,
+        item.cantidad_entregada,
+        "" // Observaciones vacías
+      ]);
+    });
+
+    autoTable(doc, {
+      head: [["Suministro", "Unidad", "Cant. Entregada", "Observaciones"]],
+      body: tableRows,
+      startY: 75,
+      theme: 'grid',
+      styles: { fontSize: 10 },
+      headStyles: { fillColor: [41, 128, 185] }
+    });
+
+    // @ts-ignore
+    const finalY = doc.lastAutoTable.finalY + 40;
+
+    // Firmas
+    doc.setFontSize(10);
+    doc.line(30, finalY, 90, finalY);
+    doc.text("Firma Almacén", 60, finalY + 5, { align: "center" });
+    doc.text(user?.nombre || "", 60, finalY + 10, { align: "center" });
+
+    doc.line(120, finalY, 180, finalY);
+    doc.text("Firma Recibí Conforme", 150, finalY + 5, { align: "center" });
+    doc.text("Nombre: ____________________", 150, finalY + 12, { align: "center" });
+    doc.text("C.I.: ____________________", 150, finalY + 19, { align: "center" });
+
+    const pdfBlob = doc.output("blob");
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    setPdfPreview({
+      url: pdfUrl,
+      name: `Plantilla_Acta_SOL_${String(selectedSolicitud.id).padStart(3, "0")}.pdf`,
+      title: "Vista Previa de Plantilla de Acta"
+    });
+  };
+
   const filtrados = solicitudes.filter(s => 
     estadoFiltro === "Todos los estados" || s.estado === estadoFiltro
   );
@@ -249,11 +434,21 @@ export default function SolicitudesPage() {
             <option>Entregado Totalmente</option>
             <option>Rechazado</option>
           </select>
-          {(user?.rol === "Administrador" || user?.rol === "Técnico") && (
-            <button className="btn-primary" style={{ marginLeft: "auto" }} onClick={() => setModalAbierto(true)}>
-              + Nueva Solicitud
+          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", marginLeft: "auto" }}>
+            <button 
+              className="btn-secondary" 
+              onClick={() => setReportModalOpen(true)} 
+              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+              Reporte Entregados
             </button>
-          )}
+            {(user?.rol === "Administrador" || user?.rol === "Técnico" || user?.rol === "Supervisor de Obra") && (
+              <button className="btn-primary" onClick={() => setModalAbierto(true)}>
+                + Nueva Solicitud
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -439,124 +634,115 @@ export default function SolicitudesPage() {
         </div>
       )}
 
-      {/* Modal Detalle de Solicitud (Sober & Professional Style) */}
+      {/* Modal Detalle de Solicitud */}
       {detailModalOpen && (
         <div className="modal-overlay" onClick={() => setDetailModalOpen(false)}>
-          <div className="modal-content !max-w-4xl !p-0 overflow-hidden" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }} onClick={e => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth: "850px", maxHeight: "85vh", display: "flex", flexDirection: "column", padding: 0 }} onClick={e => e.stopPropagation()}>
             
-            {/* Modal Header Standard */}
-            <div className="modal-header !px-8 !py-6 border-b" style={{ borderColor: "var(--border)", background: "rgba(var(--bg-secondary-rgb), 0.5)" }}>
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-black text-accent uppercase tracking-[2px]">Detalle de Requerimiento</span>
-                <h2 className="text-xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>SOL-{String(selectedSolicitud?.id || 0).padStart(3, "0")}</h2>
-              </div>
-              <div className="flex items-center gap-4">
-                <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${badgeColors[(selectedSolicitud?.estado || "").trim().toLowerCase()] || "badge-gray"} border`} style={{ borderColor: "var(--border)" }}>
+            <div className="modal-header" style={{ padding: "1.5rem 2rem", borderBottom: "1px solid var(--border)", marginBottom: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                <h2 style={{ fontSize: "1.2rem", fontWeight: "800" }}>SOL-{String(selectedSolicitud?.id || 0).padStart(3, "0")}</h2>
+                <span className={`badge ${badgeColors[(selectedSolicitud?.estado || "").trim().toLowerCase()] || "badge-gray"}`}>
                   {selectedSolicitud?.estado}
                 </span>
-                <button className="modal-close" onClick={() => setDetailModalOpen(false)}>✕</button>
+                {selectedSolicitud?.pdf_entrega && (
+                  <button 
+                    className="btn-secondary" 
+                    style={{ padding: "0.2rem 0.6rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.4rem" }}
+                    onClick={() => {
+                      setPdfPreview({
+                        url: `${process.env.NEXT_PUBLIC_API_URL}${selectedSolicitud.pdf_entrega}`,
+                        name: `Acta_Firmada_SOL_${String(selectedSolicitud.id).padStart(3, "0")}.pdf`,
+                        title: "Acta de Conformidad Firmada"
+                      });
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                    Ver Acta Firmada
+                  </button>
+                )}
               </div>
+              <button className="modal-close" onClick={() => setDetailModalOpen(false)}>✕</button>
             </div>
 
-            <div className="p-8 space-y-10" style={{ color: "var(--text-primary)" }}>
+            <div style={{ flex: 1, overflowY: "auto", padding: "2rem", display: "flex", flexDirection: "column", gap: "2rem" }}>
               {detailLoading ? (
-                <div className="flex flex-col items-center justify-center py-20 gap-4">
-                  <div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "var(--text-secondary)" }}>Cargando información...</span>
-                </div>
+                <p style={{ textAlign: "center", padding: "3rem" }}>Cargando información detallada...</p>
               ) : (
                 <>
-                  {/* Info Grid Matrix */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6 p-8 rounded-2xl border" style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}>
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>Obra / Proyecto</span>
-                      <p className="text-sm font-bold truncate overflow-hidden" style={{ color: "var(--text-primary)" }}>{selectedSolicitud?.obra_nombre}</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "1rem", background: "var(--bg-primary)", padding: "1rem", borderRadius: "0.5rem", border: "1px solid var(--border)" }}>
+                    <div>
+                      <span style={{ display: "block", fontSize: "0.75rem", fontWeight: "700", color: "var(--text-secondary)", marginBottom: "0.25rem" }}>Obra / Proyecto</span>
+                      <span style={{ fontWeight: "600", fontSize: "0.9rem" }}>{selectedSolicitud?.obra_nombre}</span>
                     </div>
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>Responsable</span>
-                      <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{selectedSolicitud?.usuario_nombre}</p>
+                    <div>
+                      <span style={{ display: "block", fontSize: "0.75rem", fontWeight: "700", color: "var(--text-secondary)", marginBottom: "0.25rem" }}>Responsable</span>
+                      <span style={{ fontWeight: "600", fontSize: "0.9rem" }}>{selectedSolicitud?.usuario_nombre}</span>
                     </div>
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>Fecha Emisión</span>
-                      <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                        {selectedSolicitud?.fecha_solicitud ? new Date(selectedSolicitud.fecha_solicitud).toLocaleDateString() : "-"}
-                      </p>
+                    <div>
+                      <span style={{ display: "block", fontSize: "0.75rem", fontWeight: "700", color: "var(--text-secondary)", marginBottom: "0.25rem" }}>Fecha Emisión</span>
+                      <span style={{ fontWeight: "600", fontSize: "0.9rem" }}>{selectedSolicitud?.fecha_solicitud ? new Date(selectedSolicitud.fecha_solicitud).toLocaleDateString() : "-"}</span>
                     </div>
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>Autorizado por</span>
-                      <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{selectedSolicitud?.aprobado_por_nombre || "Pendiente"}</p>
+                    <div>
+                      <span style={{ display: "block", fontSize: "0.75rem", fontWeight: "700", color: "var(--text-secondary)", marginBottom: "0.25rem" }}>Autorizado por</span>
+                      <span style={{ fontWeight: "600", fontSize: "0.9rem" }}>{selectedSolicitud?.aprobado_por_nombre || "Pendiente"}</span>
                     </div>
                   </div>
 
-                  {/* Delivery Info Badges */}
                   {(selectedSolicitud?.entregado_por_nombre || selectedSolicitud?.pdf_entrega) && (
-                    <div className="flex flex-wrap gap-4 px-2">
+                    <div style={{ display: "flex", gap: "1rem" }}>
                       {selectedSolicitud?.entregado_por_nombre && (
-                        <div className="flex items-center gap-3 px-5 py-3 rounded-2xl border shadow-sm" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
-                          <div className="w-7 h-7 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
-                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-[8px] font-black uppercase tracking-tighter" style={{ color: "var(--text-secondary)" }}>Despachado por</span>
-                            <span className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>{selectedSolicitud.entregado_por_nombre}</span>
+                        <div style={{ background: "var(--bg-card)", padding: "0.75rem 1rem", borderRadius: "0.5rem", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                          <span style={{ fontSize: "1.5rem" }}>📦</span>
+                          <div>
+                            <span style={{ display: "block", fontSize: "0.7rem", fontWeight: "700", color: "var(--text-secondary)" }}>Despachado por</span>
+                            <span style={{ fontWeight: "600" }}>{selectedSolicitud.entregado_por_nombre}</span>
                           </div>
                         </div>
                       )}
                       {selectedSolicitud?.pdf_entrega && (
-                        <a href={`${process.env.NEXT_PUBLIC_API_URL}${selectedSolicitud.pdf_entrega}`} target="_blank" rel="noopener noreferrer" 
-                           className="flex items-center gap-3 bg-red-500/5 hover:bg-red-500/10 px-5 py-3 rounded-2xl border border-red-500/20 transition-all active:scale-95 group">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-red-500 group-hover:scale-110 transition-transform"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-                          <span className="text-xs font-black text-red-500 uppercase tracking-widest">Acta Digital PDF</span>
+                        <a href={`${process.env.NEXT_PUBLIC_API_URL}${selectedSolicitud.pdf_entrega}`} target="_blank" rel="noopener noreferrer" style={{ background: "rgba(239, 68, 68, 0.1)", padding: "0.75rem 1rem", borderRadius: "0.5rem", border: "1px solid rgba(239, 68, 68, 0.2)", display: "flex", alignItems: "center", gap: "0.75rem", color: "#ef4444", textDecoration: "none" }}>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                          <span style={{ fontWeight: "700", fontSize: "0.85rem" }}>Ver Acta PDF</span>
                         </a>
                       )}
                     </div>
                   )}
 
-                  {/* Items Table Section */}
-                  <div className="space-y-5 px-1">
-                    <div className="flex items-center justify-between px-2">
-                      <h3 className="text-[10px] font-black uppercase tracking-[2px]" style={{ color: "var(--text-secondary)" }}>Detalle de Suministros Solicitados</h3>
-                      <div className="text-[10px] font-black text-accent">{selectedSolicitud?.items?.length} MATERIALES</div>
-                    </div>
-                    
-                    <div className="overflow-x-auto border rounded-2xl shadow-sm" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}>
-                      <table className="!mb-0 w-full min-w-[700px]">
+                  <div>
+                    <h3 style={{ fontSize: "1rem", fontWeight: "750", marginBottom: "1rem" }}>Suministros Solicitados</h3>
+                    <div className="table-container">
+                      <table>
                         <thead>
-                          <tr className="border-b" style={{ background: "rgba(var(--accent-rgb), 0.04)", borderColor: "var(--border)" }}>
-                            <th className="!py-4 px-6 text-[10px] font-black uppercase tracking-wider text-left" style={{ color: "var(--text-secondary)" }}>Suministro</th>
-                            <th className="!py-4 px-4 text-[10px] font-black uppercase tracking-wider text-right" style={{ color: "var(--text-secondary)" }}>Cant. Pedida</th>
-                            {selectedSolicitud?.estado !== "Entregado Totalmente" && (
-                              <th className="!py-4 px-4 text-[10px] font-black uppercase tracking-wider text-right" style={{ color: "var(--text-secondary)" }}>Stock Disp.</th>
-                            )}
-                            <th className="!py-4 px-4 text-[10px] font-black uppercase tracking-wider text-right" style={{ color: "var(--text-secondary)" }}>Entregado</th>
-                            <th className="!py-4 px-4 text-[10px] font-black uppercase tracking-wider text-right" style={{ color: "var(--text-secondary)" }}>Saldo</th>
-                            <th className="!py-4 px-4 text-[10px] font-black uppercase tracking-wider text-right" style={{ color: "var(--text-secondary)" }}>P. Unit (Bs)</th>
-                            <th className="!py-4 px-6 text-[10px] font-black uppercase tracking-wider text-right" style={{ color: "var(--text-secondary)" }}>Subtotal</th>
+                          <tr>
+                            <th>Suministro</th>
+                            <th style={{ textAlign: "center" }}>Pedida</th>
+                            {selectedSolicitud?.estado !== "Entregado Totalmente" && <th style={{ textAlign: "center" }}>Stock Disp.</th>}
+                            <th style={{ textAlign: "center" }}>Entregado</th>
+                            <th style={{ textAlign: "center" }}>Saldo</th>
+                            <th style={{ textAlign: "right" }}>P. Unit</th>
+                            <th style={{ textAlign: "right" }}>Subtotal</th>
                           </tr>
                         </thead>
                         <tbody>
                           {selectedSolicitud?.items?.map((item: any) => (
-                            <tr key={item.id} className="hover:bg-[var(--bg-card)] transition-colors group border-b last:border-0" style={{ borderColor: "var(--border)" }}>
-                              <td className="!py-4 px-6 font-bold" style={{ color: "var(--text-primary)" }}>{item.suministro_nombre}</td>
-                              <td className="!py-4 px-4 text-right font-medium" style={{ color: "var(--text-secondary)" }}>{item.cantidad_solicitada}</td>
+                            <tr key={item.id}>
+                              <td style={{ fontWeight: "600" }}>{item.suministro_nombre}</td>
+                              <td style={{ textAlign: "center" }}>{item.cantidad_solicitada} <span style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>{item.unidad}</span></td>
                               {selectedSolicitud?.estado !== "Entregado Totalmente" && (
-                                <td className={`!py-4 px-4 text-right font-bold ${item.stock_real < item.saldo_pendiente ? "text-orange-500" : "text-[var(--text-secondary)]"}`}>
-                                  {item.stock_real}
-                                </td>
+                                <td style={{ textAlign: "center", fontWeight: "600", color: item.stock_real < item.saldo_pendiente ? "#ef4444" : "var(--text-primary)" }}>{item.stock_real} <span style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>{item.unidad}</span></td>
                               )}
-                              <td className="!py-4 px-4 text-right font-bold text-green-600 dark:text-green-400">{item.cantidad_entregada}</td>
-                              <td className={`!py-4 px-4 text-right font-black ${item.saldo_pendiente > 0 ? "text-accent" : "text-[var(--text-secondary)]"}`}>
-                                {item.saldo_pendiente}
-                              </td>
-                              <td className="!py-4 px-4 text-right font-medium" style={{ color: "var(--text-secondary)" }}>{parseFloat(item.precio_unitario || 0).toLocaleString()}</td>
-                              <td className="!py-4 px-6 text-right font-bold" style={{ color: "var(--text-primary)" }}>{((item.cantidad_solicitada || 0) * (item.precio_unitario || 0)).toLocaleString()}</td>
+                              <td style={{ textAlign: "center", fontWeight: "700", color: "#10b981" }}>{item.cantidad_entregada} <span style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>{item.unidad}</span></td>
+                              <td style={{ textAlign: "center", fontWeight: "700", color: item.saldo_pendiente > 0 ? "var(--accent)" : "var(--text-primary)" }}>{item.saldo_pendiente} <span style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>{item.unidad}</span></td>
+                              <td style={{ textAlign: "right" }}>Bs. {parseFloat(item.precio_unitario || 0).toLocaleString()}</td>
+                              <td style={{ textAlign: "right", fontWeight: "600" }}>Bs. {((item.cantidad_solicitada || 0) * (item.precio_unitario || 0)).toLocaleString()}</td>
                             </tr>
                           ))}
                         </tbody>
                         <tfoot>
-                          <tr className="border-t" style={{ background: "rgba(var(--accent-rgb), 0.06)", borderColor: "var(--border)" }}>
-                            <td colSpan={selectedSolicitud?.estado !== "Entregado Totalmente" ? 6 : 5} className="!py-6 px-6 text-right font-black uppercase tracking-[2px] text-[10px]" style={{ color: "var(--text-secondary)" }}>Valorización Total del Pedido:</td>
-                            <td className="!py-6 px-6 text-right font-black text-xl" style={{ color: "var(--text-primary)" }}>
+                          <tr>
+                            <td colSpan={selectedSolicitud?.estado !== "Entregado Totalmente" ? 6 : 5} style={{ textAlign: "right", fontWeight: "700" }}>Total:</td>
+                            <td style={{ textAlign: "right", fontWeight: "800", fontSize: "1.1rem" }}>
                               Bs. {selectedSolicitud?.items?.reduce((acc: number, item: any) => acc + (item.cantidad_solicitada * (item.precio_unitario || 0)), 0).toLocaleString()}
                             </td>
                           </tr>
@@ -565,98 +751,97 @@ export default function SolicitudesPage() {
                     </div>
                   </div>
 
-                  {/* Logistics Dispatch Section (Warehouse Only) */}
                   {(selectedSolicitud?.estado === "Aprobado" || selectedSolicitud?.estado === "Atendiendo" || selectedSolicitud?.estado === "Listo para entrega" || selectedSolicitud?.estado === "Entregado Parcialmente") && (user?.rol === "Administrador" || user?.rol === "Almacén") && (
-                     <div className="p-10 rounded-[2rem] border shadow-2xl relative overflow-hidden" style={{ background: "var(--bg-secondary)", borderColor: "var(--accent)" }}>
-                       <div className="absolute top-0 right-0 w-48 h-48 bg-accent/5 blur-[80px] rounded-full -mr-24 -mt-24 pointer-events-none"></div>
-                       <h4 className="text-md font-black uppercase tracking-[1px] mb-8 flex items-center gap-3" style={{ color: "var(--text-primary)" }}>
-                         <div className="w-10 h-10 rounded-2xl bg-accent text-white flex items-center justify-center shadow-lg shadow-accent/30">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
-                         </div>
-                         Gestión de Despacho de Inventario
-                       </h4>
-                       
-                       <div className="grid md:grid-cols-2 gap-10 relative z-10">
-                         <div className="space-y-5">
-                           <span className="text-[10px] font-black uppercase tracking-[2px] block px-1" style={{ color: "var(--text-secondary)" }}>Ajuste de Salida por Ítem</span>
-                           <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-3 custom-scrollbar">
-                             {selectedSolicitud?.items?.filter((i:any) => i.saldo_pendiente > 0).map((item: any) => (
-                               <div key={item.id} className="flex justify-between items-center p-5 rounded-2xl border hover:border-accent group transition-all" style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}>
-                                 <div className="flex flex-col">
-                                   <span className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>{item.suministro_nombre}</span>
-                                   <span className="text-[10px] font-bold uppercase tracking-tighter" style={{ color: "var(--text-secondary)" }}>Saldo: {item.saldo_pendiente} {item.unidad || 'u.'}</span>
-                                 </div>
-                                 <div className="relative">
-                                   <input 
-                                     type="number" 
-                                     defaultValue={item.saldo_pendiente}
-                                     max={item.saldo_pendiente}
-                                     min="0"
-                                     id={`deliver-${item.suministro_id}`}
-                                     className="w-24 h-11 border text-center font-black text-accent rounded-xl outline-none transition-all shadow-inner"
-                                     style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
-                                   />
-                                 </div>
-                               </div>
-                             ))}
-                           </div>
-                         </div>
-                         
-                         <div className="space-y-8">
-                           <div className="space-y-5">
-                             <span className="text-[10px] font-black uppercase tracking-[2px] block px-1" style={{ color: "var(--text-secondary)" }}>Cierre y Respaldo Digital</span>
-                             <div className="p-10 rounded-2xl border border-dashed hover:border-accent/50 transition-all group flex flex-col items-center justify-center gap-5 text-center cursor-pointer" style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}>
-                               <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-gray-400 group-hover:text-accent group-hover:bg-accent/10 transition-all transform group-hover:-translate-y-1 shadow-sm" style={{ background: "var(--bg-card)" }}>
-                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-                               </div>
-                               <div>
-                                 <p className="text-xs font-bold mb-1" style={{ color: "var(--text-primary)" }}>Acta de Conformidad (PDF)</p>
-                                 <p className="text-[10px] font-medium" style={{ color: "var(--text-secondary)" }}>Arrastre o seleccione el documento escaneado</p>
-                               </div>
-                               <input type="file" accept=".pdf" className="hidden" id="pdf-upload" onChange={e => {
-                                 if (e.target.files && e.target.files.length > 0) setPdfFile(e.target.files[0]);
+                    <div style={{ background: "var(--bg-primary)", padding: "1.5rem", borderRadius: "0.5rem", border: "1px solid var(--accent)", marginTop: "1rem" }}>
+                      <h4 style={{ fontSize: "1rem", fontWeight: "750", marginBottom: "1.5rem", color: "var(--accent)" }}>Gestión de Despacho</h4>
+                      
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
+                        <div>
+                          <span style={{ display: "block", fontSize: "0.85rem", fontWeight: "700", marginBottom: "1rem" }}>Cantidades a Entregar</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", maxHeight: "250px", overflowY: "auto" }}>
+                            {selectedSolicitud?.items?.filter((i:any) => i.saldo_pendiente > 0).map((item: any) => (
+                              <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-card)", padding: "0.75rem", borderRadius: "0.5rem", border: "1px solid var(--border)" }}>
+                                <div>
+                                  <span style={{ display: "block", fontWeight: "600", fontSize: "0.9rem" }}>{item.suministro_nombre}</span>
+                                  <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>Saldo: {item.saldo_pendiente} {item.unidad}</span>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                  <input 
+                                    type="number" 
+                                    defaultValue={item.saldo_pendiente}
+                                    max={item.saldo_pendiente}
+                                    min="0"
+                                    id={`deliver-${item.suministro_id}`}
+                                    style={{ width: "80px", textAlign: "center", fontWeight: "700", color: "var(--accent)" }}
+                                  />
+                                  <span style={{ fontSize: "0.75rem", fontWeight: "600", color: "var(--text-secondary)" }}>{item.unidad}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                          <div>
+                            <span style={{ display: "block", fontSize: "0.85rem", fontWeight: "700", marginBottom: "1rem" }}>Acta de Conformidad (Opcional)</span>
+                            <div style={{ border: "2px dashed var(--border)", padding: "1.5rem", borderRadius: "0.5rem", textAlign: "center", background: "var(--bg-card)", display: "flex", flexDirection: "column", gap: "1rem", alignItems: "center" }}>
+                              <button 
+                                type="button"
+                                className="btn-secondary" 
+                                style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}
+                                onClick={generarPlantillaActa}
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                                Generar Plantilla PDF
+                              </button>
+                              
+                              <div style={{ width: "100%", height: "1px", background: "var(--border)" }}></div>
+
+                              <div>
+                                <input type="file" accept=".pdf" id="pdf-upload" style={{ display: "none" }} onChange={e => {
+                                  if (e.target.files && e.target.files.length > 0) setPdfFile(e.target.files[0]);
                                 }} />
-                               <label htmlFor="pdf-upload" className="w-full px-8 py-3 rounded-xl text-[10px] font-black cursor-pointer transition-all text-center" style={{ background: "var(--accent)", color: "white" }}>
-                                 {pdfFile ? `✓ ${pdfFile.name.substring(0, 15)}...` : 'SELECCIONAR PDF'}
-                               </label>
-                             </div>
-                           </div>
-
-                           <button 
-                             className="w-full h-16 bg-accent hover:bg-accent-hover text-white font-black text-xs uppercase tracking-[4px] rounded-2xl shadow-xl shadow-accent/25 transition-all active:scale-[0.98] flex items-center justify-center gap-3"
-                             onClick={() => {
-                               const toDeliver = selectedSolicitud.items
-                                 .filter((i:any) => i.saldo_pendiente > 0)
-                                 .map((i:any) => ({
-                                   suministro_id: i.suministro_id,
-                                   cantidad_entregada: parseInt((document.getElementById(`deliver-${i.suministro_id}`) as HTMLInputElement).value || "0")
-                                 }))
-                                 .filter((i:any) => i.cantidad_entregada > 0);
-                               
-                               if (toDeliver.length > 0) handleEntregarMateriales(selectedSolicitud.id, toDeliver);
-                             }}
-                           >
-                             PROCESAR ENTREGA FINAL
-                           </button>
-                         </div>
-                       </div>
-                     </div>
+                                <label htmlFor="pdf-upload" className="btn-secondary" style={{ cursor: "pointer", display: "inline-block", fontSize: "0.85rem" }}>
+                                  {pdfFile ? `✓ ${pdfFile.name}` : 'Subir Archivo Firmado'}
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <button 
+                            className="btn-primary"
+                            style={{ padding: "1rem", fontSize: "1rem", marginTop: "auto" }}
+                            onClick={() => {
+                              const toDeliver = selectedSolicitud.items
+                                .filter((i:any) => i.saldo_pendiente > 0)
+                                .map((i:any) => ({
+                                  suministro_id: i.suministro_id,
+                                  cantidad_entregada: parseInt((document.getElementById(`deliver-${i.suministro_id}`) as HTMLInputElement).value || "0")
+                                }))
+                                .filter((i:any) => i.cantidad_entregada > 0);
+                              
+                              if (toDeliver.length > 0) handleEntregarMateriales(selectedSolicitud.id, toDeliver);
+                            }}
+                          >
+                            Confirmar Entrega
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   )}
-
-                  {/* Modal Footer Actions */}
-                  <div className="flex gap-5 pt-6 px-2">
-                    <button className="h-14 flex-1 btn-secondary text-xs font-black uppercase tracking-[2px] rounded-2xl active:scale-95 transition-transform" onClick={() => setDetailModalOpen(false)}>Cerrar Reporte</button>
-                    
-                    {selectedSolicitud?.estado === "Pendiente de Aprobación" && (user?.rol === "Administrador" || user?.rol === "Supervisor de Obra") && (
-                      <button className="h-14 flex-1 bg-accent/90 hover:bg-accent text-white font-black rounded-2xl shadow-xl shadow-accent/20 transition-all text-xs uppercase tracking-[2px] active:scale-95 flex items-center justify-center gap-2" onClick={() => handleAprobar(selectedSolicitud.id)}>
-                        AUTORIZAR REQUERIMIENTO
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                      </button>
-                    )}
-                  </div>
                 </>
               )}
             </div>
+
+            <div style={{ padding: "1.25rem 2rem", borderTop: "1px solid var(--border)", background: "var(--bg-primary)", display: "flex", gap: "1rem", justifyContent: "flex-end" }}>
+              <button className="btn-secondary" onClick={() => setDetailModalOpen(false)}>Cerrar</button>
+              {selectedSolicitud?.estado === "Pendiente de Aprobación" && (user?.rol === "Administrador" || user?.rol === "Supervisor de Obra") && (
+                <button className="btn-primary" onClick={() => handleAprobar(selectedSolicitud.id)}>
+                  Aprobar Solicitud
+                </button>
+              )}
+            </div>
+
           </div>
         </div>
       )}
@@ -701,6 +886,93 @@ export default function SolicitudesPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* PDF Preview Modal */}
+      {pdfPreview && (
+        <div className="modal-overlay" onClick={() => setPdfPreview(null)} style={{ zIndex: 1000 }}>
+          <div className="modal-content" style={{ maxWidth: "800px", width: "90%", height: "85vh", display: "flex", flexDirection: "column", padding: 0 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header" style={{ padding: "1rem 1.5rem", borderBottom: "1px solid var(--border)", marginBottom: 0 }}>
+              <h2 style={{ fontSize: "1.25rem", fontWeight: "700" }}>{pdfPreview.title}</h2>
+              <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+                <a 
+                  href={pdfPreview.url} 
+                  download={pdfPreview.name} 
+                  className="btn-primary" 
+                  style={{ textDecoration: "none", padding: "0.5rem 1rem", fontSize: "0.9rem" }}
+                  onClick={() => setPdfPreview(null)}
+                >
+                  Descargar PDF
+                </a>
+                <button type="button" className="modal-close" onClick={() => setPdfPreview(null)}>✕</button>
+              </div>
+            </div>
+            <div style={{ flex: 1, backgroundColor: "#525659" }}>
+              <iframe 
+                src={pdfPreview.url} 
+                title={pdfPreview.title} 
+                width="100%" 
+                height="100%" 
+                style={{ border: "none" }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Date Range Modal */}
+      {reportModalOpen && (
+        <div className="modal-overlay" onClick={() => setReportModalOpen(false)}>
+          <form className="modal-content" style={{ maxWidth: "450px" }} onClick={e => e.stopPropagation()} onSubmit={fetchAndGeneratePDF}>
+            <div className="modal-header" style={{ marginBottom: "1.5rem" }}>
+              <h2 style={{ fontSize: "1.25rem", fontWeight: "800", color: "var(--text-primary)" }}>
+                Generar Reporte de Entregas
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setReportModalOpen(false)}>✕</button>
+            </div>
+
+            <p style={{ fontSize: "0.9rem", color: "var(--text-secondary)", marginBottom: "1.5rem" }}>
+              Selecciona el rango de fechas de aprobación para generar el reporte detallado.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: "700", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
+                  Fecha de Inicio
+                </label>
+                <input 
+                  type="date" 
+                  required
+                  value={reportForm.startDate}
+                  onChange={e => setReportForm({...reportForm, startDate: e.target.value})}
+                  style={{ width: "100%", padding: "0.75rem" }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: "700", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
+                  Fecha Final
+                </label>
+                <input 
+                  type="date" 
+                  required
+                  value={reportForm.endDate}
+                  onChange={e => setReportForm({...reportForm, endDate: e.target.value})}
+                  style={{ width: "100%", padding: "0.75rem" }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "1rem", marginTop: "2rem" }}>
+              <button type="button" className="btn-secondary" onClick={() => setReportModalOpen(false)}>
+                Cancelar
+              </button>
+              <button type="submit" className="btn-primary" disabled={reportLoading} style={{ background: "var(--green)", borderColor: "var(--green)" }}>
+                {reportLoading ? "Generando..." : "Generar Reporte"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
